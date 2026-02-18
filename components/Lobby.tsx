@@ -15,9 +15,10 @@ interface Room {
 interface LobbyProps {
   onJoinRoom: (roomId: string) => void;
   userDisplayName: string;
+  userId: string;
 }
 
-export const Lobby: React.FC<LobbyProps> = ({ onJoinRoom, userDisplayName }) => {
+export const Lobby: React.FC<LobbyProps> = ({ onJoinRoom, userDisplayName, userId }) => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [newRoomName, setNewRoomName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,6 +44,7 @@ export const Lobby: React.FC<LobbyProps> = ({ onJoinRoom, userDisplayName }) => 
       const docRef = await addDoc(collection(db, 'rooms'), {
         name: newRoomName,
         createdBy: userDisplayName,
+        createdByUid: userId,
         createdAt: serverTimestamp()
       });
       setNewRoomName('');

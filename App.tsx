@@ -231,7 +231,11 @@ const App: React.FC = () => {
           </div>
         </nav>
         <main className="flex-1 overflow-y-auto p-4 md:p-8 max-w-[1400px] mx-auto w-full">
-          <Lobby onJoinRoom={setActiveRoomId} userDisplayName={user.displayName || 'Anon'} />
+          <Lobby 
+            onJoinRoom={setActiveRoomId} 
+            userDisplayName={user.displayName || 'Anon'} 
+            userId={user.uid}
+          />
         </main>
       </div>
     );

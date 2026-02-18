@@ -1,19 +1,32 @@
-// Firestore Security Rules
+// ---------------------------------------------------------
+// 1. FIRESTORE RULES (For Rooms List)
+// Copy this into the "Firestore Database" -> "Rules" tab
+// ---------------------------------------------------------
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow anyone signed in to read room list
     match /rooms/{roomId} {
+      // Anyone signed in can read rooms
       allow read: if request.auth != null;
-      // Allow creation if signed in
-      allow create: if request.auth != null;
-      // Optional: Only allow creator to update/delete (if you add that logic later)
-      allow update, delete: if request.auth != null && request.auth.uid == resource.data.createdByUid;
+      
+      // Anyone signed in can create a room
+      // We validate that the 'createdByUid' field matches their own UID
+      allow create: if request.auth != null 
+                    && request.resource.data.createdByUid == request.auth.uid;
+      
+      // Only the creator can update or delete the room
+      allow update, delete: if request.auth != null 
+                            && resource.data.createdByUid == request.auth.uid;
     }
   }
 }
 
-// Realtime Database Security Rules
+// ---------------------------------------------------------
+// 2. REALTIME DATABASE RULES (For Chat & Participants)
+// Copy this into the "Realtime Database" -> "Rules" tab
+// ---------------------------------------------------------
+
 {
   "rules": {
     "rooms": {
@@ -21,9 +34,8 @@ service cloud.firestore {
         "participants": {
           ".read": "auth != null",
           "$peerId": {
-            // Users can only write their own entry
+            // Users can write their own participant entry
             ".write": "auth != null",
-            // Optional validation: ".validate": "newData.hasChildren(['displayName', 'photoURL'])"
           }
         }
       }
@@ -31,11 +43,8 @@ service cloud.firestore {
     "chats": {
       "$roomId": {
         ".read": "auth != null",
-        ".write": "auth != null",
-        // Optional: Validate message structure
-        "$messageId": {
-          ".validate": "newData.hasChildren(['text', 'sender', 'timestamp'])"
-        }
+        // Anyone signed in can send a message
+        ".write": "auth != null"
       }
     }
   }
