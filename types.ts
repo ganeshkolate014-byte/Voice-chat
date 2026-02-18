@@ -1,4 +1,3 @@
-
 export interface PeerConnection {
   peerId: string;
   stream: MediaStream;
@@ -30,16 +29,4 @@ export interface ChatMessage {
   text: string;
   sender: Sender;
   timestamp: Date;
-}
-
-export interface ServerData {
-  id: string;
-  name: string;
-  description: string;
-  ownerId: string; // Firebase Auth UID of owner
-  ownerName: string;
-  hostPeerId: string; // The current P2P ID of the host (changes every session)
-  isOnline: boolean;
-  category: 'CASUAL' | 'GAMING' | 'MUSIC' | 'MEETING';
-  createdAt: number;
 }
