@@ -3,10 +3,8 @@ import { useWebRTC } from './hooks/useWebRTC';
 import { Button } from './components/Button';
 import { StreamAudio } from './components/StreamAudio';
 import { StreamVideo } from './components/StreamVideo';
-import { Mic, MicOff, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio, PhoneOff, MessageSquare, Monitor, MonitorOff, ArrowLeft } from 'lucide-react';
+import { Mic, MicOff, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio, PhoneOff, MessageSquare, Monitor, MonitorOff, ArrowLeft, User as UserIcon } from 'lucide-react';
 import { VolumeVisualizer } from './components/VolumeVisualizer';
-import { auth, googleProvider } from './services/firebase';
-import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { ChatWindow } from './components/ChatWindow';
 import { Lobby } from './components/Lobby';
 import { RoomService } from './services/roomService';
@@ -55,11 +53,10 @@ const useAudioLevel = (stream: MediaStream | null) => {
 };
 
 const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [displayName, setDisplayName] = useState<string>('');
+  const [isNameSet, setIsNameSet] = useState(false);
   const { myId, myStream, connections, error, enableVoice, connectToFriend, disconnectFromFriend, isSignalConnected, isMuted, toggleMic, endAllCalls, toggleScreenShare, screenStream } = useWebRTC();
   const [copied, setCopied] = useState(false);
-  const [inviteLink, setInviteLink] = useState('');
   const [joinId, setJoinId] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const myVolume = useAudioLevel(myStream);
@@ -69,23 +66,22 @@ const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const joinParam = params.get('join');
     if (joinParam) setJoinId(joinParam);
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    
+    // Check local storage for name
+    const storedName = localStorage.getItem('voice_sync_name');
+    if (storedName) {
+        setDisplayName(storedName);
+        setIsNameSet(true);
+    }
   }, []);
 
   // Handle Room Joining/Leaving
   useEffect(() => {
-    if (activeRoomId && myId && user) {
+    if (activeRoomId && myId && isNameSet) {
       // Join the room in Realtime DB
       RoomService.joinRoom(activeRoomId, myId, {
-        displayName: user.displayName || 'Anon',
-        photoURL: user.photoURL || ''
+        displayName: displayName || 'Anon',
+        photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=fbbf24`
       });
 
       // Subscribe to participants
@@ -102,15 +98,21 @@ const App: React.FC = () => {
         RoomService.leaveRoom(activeRoomId, myId);
       };
     }
-  }, [activeRoomId, myId, user, connectToFriend]);
+  }, [activeRoomId, myId, isNameSet, displayName, connectToFriend]);
 
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (e) {
-      console.error(e);
-      alert("Login failed");
+  const handleSetName = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (displayName.trim()) {
+        localStorage.setItem('voice_sync_name', displayName);
+        setIsNameSet(true);
     }
+  };
+
+  const handleLogout = () => {
+      localStorage.removeItem('voice_sync_name');
+      setIsNameSet(false);
+      setDisplayName('');
+      if (activeRoomId) handleLeaveRoom();
   };
 
   const copyLink = () => {
@@ -143,18 +145,8 @@ const App: React.FC = () => {
     setIsChatOpen(false);
   };
 
-  // --- LOADER ---
-  if (loading) return (
-    <div className="min-h-screen bg-[#E0E7FF] flex items-center justify-center">
-        <div className="neo-card p-6 flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-black border-t-transparent rounded-full animate-spin"></div>
-            <span className="font-bold text-xl">LOADING_ASSETS</span>
-        </div>
-    </div>
-  );
-
-  // --- LOGIN SCREEN ---
-  if (!user) {
+  // --- NAME ENTRY SCREEN ---
+  if (!isNameSet) {
     return (
       <div className="min-h-screen neo-bg flex flex-col items-center justify-center p-6">
         <div className="neo-card p-10 max-w-md w-full flex flex-col gap-8 items-center text-center relative">
@@ -167,12 +159,25 @@ const App: React.FC = () => {
                Simple. Raw. Fast.
              </p>
           </div>
-          <div className="w-full space-y-4">
-             <Button onClick={handleLogin} variant="primary" fullWidth className="text-lg h-14">
+          
+          <form onSubmit={handleSetName} className="w-full space-y-4">
+             <div className="text-left">
+                <label className="font-bold text-sm uppercase mb-1 block">Enter your nickname</label>
+                <input 
+                    type="text" 
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="neo-input w-full px-4 py-3 text-lg"
+                    placeholder="e.g. Captain Cool"
+                    autoFocus
+                />
+             </div>
+             <Button type="submit" variant="primary" fullWidth className="text-lg h-14" disabled={!displayName.trim()}>
                 <Globe className="w-6 h-6" />
-                CONNECT WITH GOOGLE
+                ENTER LOBBY
              </Button>
-          </div>
+          </form>
+
           {joinId && (
             <div className="bg-[#86efac] text-black font-bold border-2 border-black px-4 py-2 rounded-lg flex items-center gap-2 shadow-[2px_2px_0px_0px_#000]">
                 <Zap className="w-5 h-5 fill-black" /> INVITE DETECTED
@@ -222,20 +227,18 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-4">
              <div className="hidden md:flex items-center gap-3 pl-2 pr-4 py-2 bg-[#f3f4f6] border-2 border-black rounded-lg">
-                <img src={user.photoURL || ''} alt="User" className="w-8 h-8 rounded border-2 border-black bg-white" />
-                <span className="text-sm font-bold">{user.displayName}</span>
+                <div className="w-8 h-8 rounded border-2 border-black bg-white overflow-hidden">
+                    <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=fbbf24`} alt="Avatar" />
+                </div>
+                <span className="text-sm font-bold">{displayName}</span>
              </div>
-             <Button variant="danger" onClick={() => signOut(auth)} className="!h-10 !w-10 !p-0 !rounded-lg flex items-center justify-center">
+             <Button variant="danger" onClick={handleLogout} className="!h-10 !w-10 !p-0 !rounded-lg flex items-center justify-center" title="Change Name">
                <LogOut className="w-5 h-5 ml-0.5" />
              </Button>
           </div>
         </nav>
         <main className="flex-1 overflow-y-auto p-4 md:p-8 max-w-[1400px] mx-auto w-full">
-          <Lobby 
-            onJoinRoom={setActiveRoomId} 
-            userDisplayName={user.displayName || 'Anon'} 
-            userId={user.uid}
-          />
+          <Lobby onJoinRoom={setActiveRoomId} userDisplayName={displayName} />
         </main>
       </div>
     );
@@ -258,10 +261,12 @@ const App: React.FC = () => {
 
         <div className="flex items-center gap-4">
            <div className="hidden md:flex items-center gap-3 pl-2 pr-4 py-2 bg-[#f3f4f6] border-2 border-black rounded-lg">
-              <img src={user.photoURL || ''} alt="User" className="w-8 h-8 rounded border-2 border-black bg-white" />
-              <span className="text-sm font-bold">{user.displayName}</span>
+              <div className="w-8 h-8 rounded border-2 border-black bg-white overflow-hidden">
+                  <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=fbbf24`} alt="Avatar" />
+              </div>
+              <span className="text-sm font-bold">{displayName}</span>
            </div>
-           <Button variant="danger" onClick={() => signOut(auth)} className="!h-10 !w-10 !p-0 !rounded-lg flex items-center justify-center">
+           <Button variant="danger" onClick={handleLogout} className="!h-10 !w-10 !p-0 !rounded-lg flex items-center justify-center" title="Change Name">
              <LogOut className="w-5 h-5 ml-0.5" />
            </Button>
         </div>
@@ -276,7 +281,7 @@ const App: React.FC = () => {
               <div className="flex flex-col items-center gap-4">
                  <div className="relative">
                     <div className="w-32 h-32 border-[3px] border-black rounded-2xl overflow-hidden bg-white shadow-[4px_4px_0px_0px_#000]">
-                        <img src={user.photoURL || ''} alt="Me" className="w-full h-full object-cover" />
+                        <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=fbbf24`} alt="Me" className="w-full h-full object-cover" />
                     </div>
                     {/* Status Badge */}
                     <div className="absolute -bottom-3 -right-3 bg-[#C4B5FD] border-2 border-black px-2 py-1 text-xs font-bold rounded-md shadow-[2px_2px_0px_0px_#000]">
@@ -290,7 +295,7 @@ const App: React.FC = () => {
                  </div>
                  
                  <div className="text-center w-full">
-                    <h2 className="text-2xl font-black uppercase">{user.displayName}</h2>
+                    <h2 className="text-2xl font-black uppercase">{displayName}</h2>
                     <div className="inline-block bg-black text-white px-2 py-0.5 text-xs font-mono mt-1 rounded">
                         ID: {myId?.substring(0,8)}
                     </div>
@@ -410,7 +415,7 @@ const App: React.FC = () => {
         isOpen={isChatOpen} 
         onClose={() => setIsChatOpen(false)} 
         roomId={activeRoomId} 
-        userDisplayName={user.displayName || 'Anon'} 
+        userDisplayName={displayName || 'Anon'} 
       />
 
       {/* Floating Error Toast */}
