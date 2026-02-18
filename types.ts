@@ -1,6 +1,7 @@
 export interface PeerConnection {
   peerId: string;
   stream: MediaStream;
+  screenStream?: MediaStream;
   isMuted: boolean;
 }
 

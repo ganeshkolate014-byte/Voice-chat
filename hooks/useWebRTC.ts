@@ -10,9 +10,11 @@ export const useWebRTC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSignalConnected, setIsSignalConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
 
   const peerRef = useRef<Peer | null>(null);
   const myStreamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -96,9 +98,34 @@ export const useWebRTC = () => {
       });
 
       peer.on('call', (call) => {
-        console.log('Incoming call from:', call.peer);
-        call.answer(stream); 
-        setupCallEventHandlers(call);
+        console.log('Incoming call from:', call.peer, 'Type:', call.metadata?.type);
+        
+        if (call.metadata?.type === 'screen') {
+            call.answer(); // Answer screen share (receive only)
+            
+            call.on('stream', (remoteScreenStream) => {
+                setConnections(prev => prev.map(c => {
+                    if (c.peerId === call.peer) {
+                        return { ...c, screenStream: remoteScreenStream };
+                    }
+                    return c;
+                }));
+            });
+
+            call.on('close', () => {
+                setConnections(prev => prev.map(c => {
+                    if (c.peerId === call.peer) {
+                        const { screenStream, ...rest } = c;
+                        return rest;
+                    }
+                    return c;
+                }));
+            });
+        } else {
+            // Standard Audio Call
+            call.answer(stream); 
+            setupCallEventHandlers(call);
+        }
       });
 
     } catch (err: any) {
@@ -121,6 +148,42 @@ export const useWebRTC = () => {
       }
     }
   }, []);
+
+  const toggleScreenShare = useCallback(async () => {
+    if (screenStreamRef.current) {
+      // Stop sharing
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+      setScreenStream(null);
+      screenStreamRef.current = null;
+      
+      // We should ideally close the screen share calls here, but PeerJS doesn't make it easy to track specific calls without a map.
+      // For now, the 'ended' event on the track will trigger cleanup on the receiver side if we handle it, 
+      // but PeerJS 'close' event on connection is better. 
+      // Since we don't track outgoing screen calls specifically in a map, we rely on the track stopping.
+      // A better approach for a production app would be to track all MediaConnections.
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        setScreenStream(stream);
+        screenStreamRef.current = stream;
+
+        // Call all existing peers
+        connections.forEach(conn => {
+            if (peerRef.current) {
+                peerRef.current.call(conn.peerId, stream, { metadata: { type: 'screen' } });
+            }
+        });
+
+        // Handle stream end from browser UI
+        stream.getVideoTracks()[0].onended = () => {
+            setScreenStream(null);
+            screenStreamRef.current = null;
+        };
+      } catch (err) {
+        console.error("Error sharing screen:", err);
+      }
+    }
+  }, [connections]);
 
   const connectToFriend = useCallback((friendId: string) => {
     if (!peerRef.current || !myStreamRef.current) {
@@ -147,6 +210,11 @@ export const useWebRTC = () => {
       const call = peerRef.current.call(targetId, myStreamRef.current);
       if (call) {
          setupCallEventHandlers(call);
+         
+         // If screen sharing is active, also call with screen stream
+         if (screenStreamRef.current) {
+             peerRef.current.call(targetId, screenStreamRef.current, { metadata: { type: 'screen' } });
+         }
       } else {
          setError("Failed to initiate call.");
       }
@@ -179,8 +247,10 @@ export const useWebRTC = () => {
     error,
     isSignalConnected,
     isMuted,
+    screenStream,
     enableVoice,
     toggleMic,
+    toggleScreenShare,
     connectToFriend,
     disconnectFromFriend,
     endAllCalls

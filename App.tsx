@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useWebRTC } from './hooks/useWebRTC';
 import { Button } from './components/Button';
 import { StreamAudio } from './components/StreamAudio';
-import { Mic, MicOff, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio, PhoneOff, MessageSquare } from 'lucide-react';
+import { StreamVideo } from './components/StreamVideo';
+import { Mic, MicOff, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio, PhoneOff, MessageSquare, Monitor, MonitorOff } from 'lucide-react';
 import { VolumeVisualizer } from './components/VolumeVisualizer';
 import { auth, googleProvider } from './services/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
@@ -54,7 +55,7 @@ const useAudioLevel = (stream: MediaStream | null) => {
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const { myId, myStream, connections, error, enableVoice, connectToFriend, disconnectFromFriend, isSignalConnected, isMuted, toggleMic, endAllCalls } = useWebRTC();
+  const { myId, myStream, connections, error, enableVoice, connectToFriend, disconnectFromFriend, isSignalConnected, isMuted, toggleMic, endAllCalls, toggleScreenShare, screenStream } = useWebRTC();
   const [copied, setCopied] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
   const [joinId, setJoinId] = useState('');
@@ -258,6 +259,15 @@ const App: React.FC = () => {
                     </div>
                  </div>
 
+                 {screenStream && (
+                    <div className="w-full aspect-video bg-black rounded-lg overflow-hidden border-2 border-black mt-2 relative group">
+                        <StreamVideo stream={screenStream} />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                            <span className="text-white font-bold uppercase text-sm">You are sharing screen</span>
+                        </div>
+                    </div>
+                  )}
+
                  <div className="w-full bg-[#f3f4f6] border-2 border-black rounded-lg p-4 mt-2">
                     <div className="flex justify-between text-xs font-bold uppercase mb-2">
                         <span>Mic Gain</span>
@@ -354,6 +364,14 @@ const App: React.FC = () => {
          </button>
 
          <button 
+             onClick={toggleScreenShare}
+             className={`w-14 h-14 rounded-xl border-2 border-black flex items-center justify-center transition-all active:scale-95 shadow-[3px_3px_0px_0px_#000] active:shadow-none active:translate-y-[3px] active:translate-x-[3px] ${screenStream ? 'bg-blue-200' : 'bg-white hover:bg-gray-50'}`}
+             title={screenStream ? "Stop Sharing" : "Share Screen"}
+          >
+             {screenStream ? <MonitorOff className="w-6 h-6 text-blue-600" /> : <Monitor className="w-6 h-6 text-black" />}
+          </button>
+
+         <button 
             onClick={endAllCalls}
             className="w-16 h-16 rounded-xl border-2 border-black flex items-center justify-center bg-red-500 hover:bg-red-600 transition-all active:scale-95 shadow-[3px_3px_0px_0px_#000] active:shadow-none active:translate-y-[3px] active:translate-x-[3px]"
             title="End Call (Cut)"
@@ -396,8 +414,14 @@ const ParticipantCard: React.FC<{ connection: any, onDisconnect: (id: string) =>
   const isSpeaking = vol > 0.05;
 
   return (
-    <div className={`neo-card p-6 transition-all duration-300 relative group ${isSpeaking ? 'bg-[#F0FDFA]' : ''}`}>
+    <div className={`neo-card p-6 transition-all duration-300 relative group ${isSpeaking ? 'bg-[#F0FDFA]' : ''} ${connection.screenStream ? 'md:col-span-2' : ''}`}>
        <StreamAudio stream={connection.stream} />
+       
+       {connection.screenStream && (
+         <div className="mb-4 w-full aspect-video bg-black rounded-lg overflow-hidden border-2 border-black shadow-[2px_2px_0px_0px_#000]">
+            <StreamVideo stream={connection.screenStream} />
+         </div>
+       )}
        
        {isSpeaking && (
            <div className="absolute top-2 right-2 bg-[#34D399] border-2 border-black px-2 py-0.5 text-[10px] font-bold uppercase rounded shadow-[2px_2px_0px_0px_#000]">
