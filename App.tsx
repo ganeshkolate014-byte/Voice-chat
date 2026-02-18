@@ -1,31 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWebRTC } from './hooks/useWebRTC';
-import { CallStatus } from './types';
-import { MinecraftButton } from './components/MinecraftButton';
+import { Button } from './components/Button';
 import { StreamAudio } from './components/StreamAudio';
-import { Mic, MicOff, Users, Copy, Radio, Signal } from 'lucide-react';
+import { Mic, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe } from 'lucide-react';
 import { VolumeVisualizer } from './components/VolumeVisualizer';
+import { auth, googleProvider } from './services/firebase';
+import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 
-// Hook to calculate volume for the visualizer
+// Helper hook for volume
 const useAudioLevel = (stream: MediaStream | null) => {
   const [volume, setVolume] = useState(0);
   const rafRef = useRef<number>();
-  const analyserRef = useRef<AnalyserNode>();
   const ctxRef = useRef<AudioContext>();
+  const analyserRef = useRef<AnalyserNode>();
 
   useEffect(() => {
     if (!stream) {
       setVolume(0);
       return;
     }
-
-    // Handle audio context for mobile (resume if suspended)
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     ctxRef.current = ctx;
-    
-    if (ctx.state === 'suspended') {
-        ctx.resume().catch(console.error);
-    }
+    if (ctx.state === 'suspended') ctx.resume();
 
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 256;
@@ -34,21 +30,14 @@ const useAudioLevel = (stream: MediaStream | null) => {
     const source = ctx.createMediaStreamSource(stream);
     source.connect(analyser);
 
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
     const update = () => {
       analyser.getByteFrequencyData(dataArray);
       let sum = 0;
-      for(let i=0; i < dataArray.length; i++) {
-        sum += dataArray[i];
-      }
-      const avg = sum / dataArray.length;
-      // Normalize to 0-1 range roughly
-      setVolume(Math.min(avg / 100, 1));
+      for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
+      setVolume(Math.min((sum / dataArray.length) / 100, 1));
       rafRef.current = requestAnimationFrame(update);
     };
-
     update();
 
     return () => {
@@ -61,195 +50,342 @@ const useAudioLevel = (stream: MediaStream | null) => {
 };
 
 const App: React.FC = () => {
-  const { myId, myStream, connections, status, error, enableVoice, connectToFriend, disconnectFromFriend } = useWebRTC();
-  const [friendIdInput, setFriendIdInput] = useState('');
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { myId, myStream, connections, error, enableVoice, connectToFriend, disconnectFromFriend, isSignalConnected } = useWebRTC();
   const [copied, setCopied] = useState(false);
+  const [inviteLink, setInviteLink] = useState('');
+  const [joinId, setJoinId] = useState('');
   const myVolume = useAudioLevel(myStream);
 
-  const copyToClipboard = () => {
+  // Check for invite link in URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const joinParam = params.get('join');
+    if (joinParam) {
+      setJoinId(joinParam);
+    }
+  }, []);
+
+  // Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Generate Invite Link when ID is available
+  useEffect(() => {
     if (myId) {
-      navigator.clipboard.writeText(myId);
+      const url = new URL(window.location.href);
+      url.searchParams.set('join', myId);
+      setInviteLink(url.toString());
+      
+      // Auto-join if pending
+      if (joinId && isSignalConnected && myStream) {
+         connectToFriend(joinId);
+         const cleanUrl = new URL(window.location.href);
+         cleanUrl.searchParams.delete('join');
+         window.history.replaceState({}, '', cleanUrl.toString());
+         setJoinId(''); // Clear pending
+      }
+    }
+  }, [myId, joinId, isSignalConnected, myStream, connectToFriend]);
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (e) {
+      console.error(e);
+      alert("Login failed");
+    }
+  };
+
+  const copyLink = () => {
+    if (inviteLink) {
+      navigator.clipboard.writeText(inviteLink);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
   };
-
-  const handleConnect = () => {
-    if (friendIdInput.trim()) {
-      connectToFriend(friendIdInput.trim());
-      setFriendIdInput('');
+  
+  const shareLink = async () => {
+    if (navigator.share && inviteLink) {
+        try {
+            await navigator.share({
+                title: 'Join my Voice Chat',
+                text: 'Click to join the call',
+                url: inviteLink
+            });
+        } catch (e) { console.log("Share failed/cancelled"); }
+    } else {
+        copyLink();
     }
   };
 
-  // 1. Landing Screen (Permission Request)
-  if (!myStream) {
+  // --- LOADER ---
+  if (loading) return (
+    <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="w-16 h-16 border-4 border-violet-600 border-t-transparent rounded-full animate-spin"></div>
+    </div>
+  );
+
+  // --- LOGIN SCREEN ---
+  if (!user) {
     return (
-      <div className="min-h-screen bg-dirt text-white flex flex-col items-center justify-center font-['VT323'] p-4 text-center select-none relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_0%,#000000a0_100%)]"></div>
-        
-        <div className="relative z-10 bg-[#000000aa] border-4 border-[#555] p-6 md:p-8 max-w-md w-full shadow-2xl flex flex-col gap-6 backdrop-blur-sm animate-in zoom-in duration-300">
-             <div className="space-y-2">
-                 <h1 className="text-4xl md:text-5xl text-white drop-shadow-[4px_4px_0_#000]">VOICE CHAT</h1>
-                 <p className="text-[#aaa] text-xl">Enable microphone to join.</p>
+      <div className="min-h-screen mesh-bg flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        {/* Decorative Blobs */}
+        <div className="absolute top-0 left-0 w-96 h-96 bg-violet-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-pulse"></div>
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-indigo-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-pulse delay-1000"></div>
+
+        <div className="glass-panel p-10 rounded-3xl shadow-2xl max-w-md w-full flex flex-col gap-8 items-center text-center border-t border-white/10 relative z-10">
+          <div className="relative">
+             <div className="absolute -inset-1 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-full blur opacity-75"></div>
+             <div className="relative bg-black p-4 rounded-full">
+                <Sparkles className="w-8 h-8 text-violet-400" />
              </div>
-             
-             {error && (
-                <div className="bg-[#a12e2e] text-white p-3 border-2 border-[#ff6b6b] text-lg break-words">
-                    {error}
-                </div>
-             )}
-             
-             <MinecraftButton onClick={enableVoice} fullWidth disabled={status === CallStatus.CONNECTING} className="py-6">
-                {status === CallStatus.CONNECTING ? "Initializing..." : "Enable Microphone"}
-             </MinecraftButton>
-             
-             <p className="text-[#666] text-lg">Works on Android & PC</p>
+          </div>
+          
+          <div className="space-y-2">
+             <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60">
+               Voice Sync
+             </h1>
+             <p className="text-white/60 text-lg">
+               High-fidelity, low-latency audio rooms for your squad.
+             </p>
+          </div>
+
+          <div className="w-full space-y-4">
+             <Button onClick={handleLogin} variant="glow" fullWidth>
+                <Globe className="w-5 h-5" />
+                Continue with Google
+             </Button>
+          </div>
+          
+          {joinId && (
+            <div className="text-sm bg-violet-500/20 text-violet-200 px-4 py-2 rounded-full border border-violet-500/30">
+                🚀 Invite pending... login to join
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  // 2. Main Dashboard
-  return (
-    <div className="min-h-screen bg-dirt text-white flex flex-col font-['VT323'] relative overflow-x-hidden select-none pb-20">
-      {/* Background Overlay */}
-      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_0%,#000000a0_100%)]"></div>
-
-      {/* Header */}
-      <header className="relative z-10 p-4 bg-[#000000aa] border-b-4 border-[#2b2b2b] flex items-center justify-center gap-4 shadow-lg sticky top-0 backdrop-blur-md">
-        <h1 className="text-3xl md:text-4xl text-[#fff] drop-shadow-[2px_2px_0_#3f3f3f] text-center">
-          MINECRAFT VOICE
-        </h1>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col items-center justify-start pt-6 md:pt-10 relative z-10 p-4 gap-6 max-w-5xl mx-auto w-full">
-        
-        {/* Error Message Toast */}
-        {error && (
-           <div className="bg-[#a12e2e] text-white p-2 border-2 border-[#ff6b6b] animate-bounce absolute top-20 z-50 shadow-xl max-w-[90%] text-center">
-             Warning: {error}
+  // --- PERMISSION SCREEN ---
+  if (!myStream) {
+    return (
+      <div className="min-h-screen mesh-bg flex flex-col items-center justify-center p-6 text-center">
+         <div className="glass-panel max-w-lg w-full p-10 rounded-3xl border border-white/10 flex flex-col gap-6 items-center animate-in zoom-in duration-300">
+           <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-2">
+             <Mic className="w-10 h-10 text-violet-400" />
            </div>
-        )}
-
-        {/* My Status Section */}
-        <div className="w-full max-w-2xl bg-[#000000aa] border-2 border-[#555] p-4 md:p-6 flex flex-col gap-4 backdrop-blur-sm shadow-xl">
-          <div className="flex items-center justify-between border-b-2 border-[#333] pb-2 mb-2">
-            <h2 className="text-xl md:text-2xl text-[#aaa]">Server Status</h2>
-            <div className="flex items-center gap-2 bg-[#00000055] px-3 py-1 rounded-full border border-[#333]">
-              <div className={`w-3 h-3 rounded-full ${myId ? 'bg-green-500 shadow-[0_0_8px_#4ade80]' : 'bg-yellow-500 animate-pulse'}`}></div>
-              <span className="text-gray-300 text-sm md:text-base">{myId ? "Online" : "Connecting..."}</span>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-[#888] uppercase text-lg">Your ID</label>
-            <div className="flex flex-col sm:flex-row gap-2">
-               <div className="flex-1 bg-[#000000] border-2 border-[#555] p-3 text-xl font-mono text-yellow-300 tracking-wider truncate flex items-center shadow-inner">
-                 {myId || "Generating..."}
-               </div>
-               <MinecraftButton onClick={copyToClipboard} className="w-full sm:w-24 flex items-center justify-center gap-2">
-                 {copied ? "OK!" : <>Copy <Copy className="w-5 h-5" /></>}
-               </MinecraftButton>
-            </div>
-          </div>
-          
-          <div className="mt-2">
-            <label className="text-[#888] uppercase text-lg">Mic Check</label>
-            <VolumeVisualizer volume={myVolume} isActive={true} />
-          </div>
-        </div>
-
-        {/* Connect Section */}
-        <div className="w-full max-w-2xl bg-[#000000aa] border-2 border-[#555] p-4 md:p-6 flex flex-col gap-4 backdrop-blur-sm shadow-xl">
-           <h2 className="text-xl md:text-2xl text-[#aaa] border-b-2 border-[#333] pb-2">Add Friend</h2>
            
-           <div className="flex flex-col md:flex-row gap-4 items-end">
-              <div className="flex-1 flex flex-col gap-1 w-full">
-                <label className="text-[#888]">Friend's ID</label>
-                <input 
-                  type="text" 
-                  value={friendIdInput}
-                  onChange={(e) => setFriendIdInput(e.target.value)}
-                  placeholder="Paste ID here..."
-                  className="w-full bg-[#000000] text-white border-2 border-[#555] p-3 text-xl font-mono focus:border-[#aaa] focus:outline-none placeholder-gray-600 shadow-inner"
-                  style={{ fontSize: '16px' }} /* Prevents iOS zoom */
-                />
+           <h2 className="text-3xl font-bold text-white">Microphone Access</h2>
+           <p className="text-white/60 text-lg leading-relaxed">
+             To provide spatial audio and noise cancellation, we need access to your microphone.
+           </p>
+           
+           {error && (
+             <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-4 rounded-xl w-full">
+                ⚠️ {error}
+             </div>
+           )}
+           
+           <Button onClick={enableVoice} variant="primary" fullWidth className="mt-4 py-6 text-lg">
+             Allow Access
+           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- DASHBOARD ---
+  return (
+    <div className="min-h-screen mesh-bg text-white flex flex-col overflow-hidden">
+      {/* Navbar */}
+      <nav className="h-20 px-6 md:px-12 flex items-center justify-between border-b border-white/5 bg-black/20 backdrop-blur-md sticky top-0 z-50">
+        <div className="flex items-center gap-4">
+           <div className="relative">
+              <div className={`w-3 h-3 rounded-full ${isSignalConnected ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-red-500 animate-pulse'}`}></div>
+              {isSignalConnected && <div className="absolute inset-0 rounded-full bg-emerald-500 animate-ping opacity-75"></div>}
+           </div>
+           <span className="font-bold text-xl tracking-tight">Voice Sync</span>
+        </div>
+
+        <div className="flex items-center gap-4">
+           <div className="hidden md:flex items-center gap-3 px-4 py-2 rounded-full bg-white/5 border border-white/10">
+              <img src={user.photoURL || ''} alt="User" className="w-6 h-6 rounded-full" />
+              <span className="text-sm font-medium opacity-80">{user.displayName}</span>
+           </div>
+           <Button variant="ghost" onClick={() => signOut(auth)} className="!p-3 rounded-full">
+             <LogOut className="w-5 h-5" />
+           </Button>
+        </div>
+      </nav>
+
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* LEFT COLUMN: Controls & My Status */}
+        <div className="lg:col-span-4 flex flex-col gap-6">
+           {/* My Card */}
+           <div className="glass-panel rounded-3xl p-6 relative overflow-hidden group">
+              <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              
+              <div className="flex flex-col items-center gap-4">
+                 <div className="relative">
+                    <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white/10 shadow-2xl relative z-10">
+                        <img src={user.photoURL || ''} alt="Me" className="w-full h-full object-cover" />
+                    </div>
+                    {/* Ring Visualizer for Self */}
+                    <div className={`absolute -inset-2 rounded-[2rem] border-2 border-violet-500/50 transition-all duration-100 ${myVolume > 0.05 ? 'scale-110 opacity-100' : 'scale-100 opacity-0'}`}></div>
+                    <div className={`absolute -inset-2 rounded-[2rem] bg-violet-500/20 blur-xl transition-all duration-100 ${myVolume > 0.05 ? 'scale-125 opacity-100' : 'scale-100 opacity-0'}`}></div>
+                 </div>
+                 
+                 <div className="text-center">
+                    <h2 className="text-xl font-bold">{user.displayName}</h2>
+                    <p className="text-white/40 text-sm font-mono mt-1">ID: {myId?.substring(0,8)}</p>
+                 </div>
+
+                 <div className="w-full mt-2">
+                    <div className="flex justify-between text-xs text-white/40 uppercase font-semibold mb-2">
+                        <span>Mic Level</span>
+                        <span>{Math.round(myVolume * 100)}%</span>
+                    </div>
+                    <VolumeVisualizer volume={myVolume} isActive={true} bars={20} />
+                 </div>
               </div>
-              <MinecraftButton variant="success" onClick={handleConnect} className="w-full md:w-auto">
-                Connect
-              </MinecraftButton>
+           </div>
+
+           {/* Invite Section */}
+           <div className="glass-panel rounded-3xl p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-2 text-violet-300 mb-2">
+                  <Share2 className="w-5 h-5" />
+                  <h3 className="font-semibold">Invite Friends</h3>
+              </div>
+              
+              {myId ? (
+                <div className="bg-black/30 p-1 rounded-xl flex items-center border border-white/5 pl-4 pr-1 py-1">
+                   <div className="flex-1 truncate text-white/50 text-sm font-mono">
+                      {inviteLink.replace(/^https?:\/\//, '')}
+                   </div>
+                   <div className="flex gap-1">
+                     <Button variant="ghost" onClick={copyLink} className="!h-9 !px-3 rounded-lg hover:bg-white/10">
+                         {copied ? <ShieldCheck className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                     </Button>
+                     <Button variant="primary" onClick={shareLink} className="!h-9 !px-3 rounded-lg">
+                         <Activity className="w-4 h-4" />
+                     </Button>
+                   </div>
+                </div>
+              ) : (
+                <div className="h-12 w-full bg-white/5 animate-pulse rounded-xl"></div>
+              )}
+              
+              <div className="h-px bg-white/10 my-1"></div>
+              
+              <div className="flex gap-2">
+                 <input 
+                    placeholder="Or enter Friend ID..."
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 text-white placeholder-white/20 focus:outline-none focus:border-violet-500 transition-colors"
+                    onKeyDown={(e) => {
+                       if (e.key === 'Enter') connectToFriend((e.target as HTMLInputElement).value);
+                    }}
+                 />
+                 <Button variant="secondary" onClick={(e) => {
+                      const input = (e.target as HTMLElement).previousElementSibling as HTMLInputElement;
+                      connectToFriend(input.value);
+                 }}>
+                    Join
+                 </Button>
+              </div>
            </div>
         </div>
 
-        {/* Connected Friends List */}
-        <div className="w-full max-w-2xl flex flex-col gap-2 pb-8">
-          <h2 className="text-xl md:text-2xl text-[#aaa] drop-shadow-md flex items-center gap-2">
-            <Users className="w-6 h-6" /> Players ({connections.length})
-          </h2>
-          
-          {connections.length === 0 ? (
-            <div className="text-center p-8 border-2 border-dashed border-[#444] text-[#666] bg-[#00000055] rounded-sm">
-              No players nearby.
-            </div>
-          ) : (
-            <div className="grid gap-2 animate-in fade-in duration-300">
-              {connections.map((conn) => (
-                <FriendRow key={conn.peerId} connection={conn} onDisconnect={() => disconnectFromFriend(conn.peerId)} />
-              ))}
-            </div>
-          )}
+        {/* RIGHT COLUMN: Participants */}
+        <div className="lg:col-span-8 flex flex-col gap-6">
+           <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold flex items-center gap-3">
+                 <Users className="w-6 h-6 text-violet-400" /> 
+                 Room Members
+                 <span className="bg-white/10 text-sm px-2 py-0.5 rounded-full text-white/60">{connections.length}</span>
+              </h2>
+           </div>
+
+           {connections.length === 0 ? (
+             <div className="flex-1 min-h-[400px] glass-panel rounded-3xl border-dashed border-2 border-white/10 flex flex-col items-center justify-center text-center gap-6 p-8">
+                <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center animate-pulse">
+                   <LinkIcon className="w-10 h-10 text-white/20" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-medium text-white/80">Room is empty</h3>
+                  <p className="text-white/40 mt-2 max-w-xs mx-auto">Share your invite link to start a voice session with your friends.</p>
+                </div>
+                <Button variant="primary" onClick={shareLink}>Invite Others</Button>
+             </div>
+           ) : (
+             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-max">
+               {connections.map(conn => (
+                 <ParticipantCard key={conn.peerId} connection={conn} onDisconnect={disconnectFromFriend} />
+               ))}
+             </div>
+           )}
         </div>
 
       </main>
+
+      {/* Floating Error Toast */}
+      {error && (
+         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-full shadow-2xl z-50 animate-bounce flex items-center gap-3">
+            <span className="bg-white/20 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">!</span>
+            {error}
+         </div>
+      )}
     </div>
   );
 };
 
-const FriendRow: React.FC<{ connection: any, onDisconnect: () => void }> = ({ connection, onDisconnect }) => {
-  const volume = useAudioLevel(connection.stream);
+// --- SUB-COMPONENTS ---
+
+const ParticipantCard: React.FC<{ connection: any, onDisconnect: (id: string) => void }> = ({ connection, onDisconnect }) => {
+  const vol = useAudioLevel(connection.stream);
+  const isSpeaking = vol > 0.05;
 
   return (
-    <div className="bg-[#00000088] border-2 border-[#555] p-3 flex flex-col sm:flex-row items-center justify-between hover:bg-[#000000aa] transition-colors shadow-lg gap-3">
-      <StreamAudio stream={connection.stream} />
-      
-      <div className="flex items-center gap-4 w-full sm:w-auto">
-        {/* Head Icon */}
-        <div className="w-12 h-12 bg-[#333] border-2 border-[#777] flex items-center justify-center shrink-0">
-           <img 
-             src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${connection.peerId}`} 
-             alt="avatar" 
-             className="w-10 h-10 image-pixelated"
-           />
-        </div>
-        
-        {/* Info */}
-        <div className="flex flex-col min-w-0 flex-1">
-          <span className="text-xl text-[#ddd] tracking-wide truncate max-w-[150px] sm:max-w-[200px]">
-             {connection.peerId}
-          </span>
-          <div className="flex items-center gap-2 text-sm">
-             <Signal className={`w-4 h-4 ${volume > 0.05 ? 'text-green-400' : 'text-gray-600'}`} />
-             <span className={volume > 0.05 ? 'text-green-400' : 'text-gray-600'}>
-               {volume > 0.05 ? 'Talking' : 'Silent'}
-             </span>
+    <div className={`glass-panel p-5 rounded-2xl transition-all duration-300 group hover:bg-white/10 ${isSpeaking ? 'border-violet-500/50 shadow-[0_0_30px_rgba(139,92,246,0.1)]' : 'border-white/10'}`}>
+       <StreamAudio stream={connection.stream} />
+       
+       <div className="flex items-start justify-between mb-4">
+          <div className="relative">
+             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 border border-white/10 flex items-center justify-center overflow-hidden">
+                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${connection.peerId}&backgroundColor=1e293b`} alt="Avatar" className="w-full h-full" />
+             </div>
+             {isSpeaking && (
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-black rounded-full animate-bounce"></div>
+             )}
           </div>
-        </div>
-      </div>
+          
+          <button 
+             onClick={() => onDisconnect(connection.peerId)}
+             className="text-white/20 hover:text-red-400 transition-colors p-1"
+             title="Disconnect"
+          >
+             <LogOut className="w-4 h-4" />
+          </button>
+       </div>
 
-      {/* Controls */}
-      <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-        <div className="w-full sm:w-24 h-4 bg-[#222] border border-[#444] hidden sm:block">
-            <div 
-            className="h-full bg-gradient-to-r from-green-800 to-green-500 transition-all duration-75"
-            style={{ width: `${Math.min(volume * 150, 100)}%` }}
-            />
-        </div>
+       <div className="mb-3">
+          <h4 className="font-bold text-lg truncate" title={connection.peerId}>
+            {connection.peerId.substring(0, 12)}...
+          </h4>
+          <span className={`text-xs font-medium uppercase tracking-wider ${isSpeaking ? 'text-green-400' : 'text-white/30'}`}>
+             {isSpeaking ? 'Speaking...' : 'Silent'}
+          </span>
+       </div>
 
-        <MinecraftButton variant="danger" onClick={onDisconnect} className="!h-10 !text-lg !px-4 w-full sm:w-auto">
-            Kick
-        </MinecraftButton>
-      </div>
+       <VolumeVisualizer volume={vol} isActive={true} bars={12} />
     </div>
   );
 };
