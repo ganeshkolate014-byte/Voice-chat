@@ -231,12 +231,12 @@ export const useWebRTC = () => {
 
   const endAllCalls = useCallback(() => {
     setConnections([]);
-    if (peerRef.current) {
-        // Just destroy and recreate peer if needed, or loop connections and close.
-        // For simple P2P mesh without full connection tracking map, we clear UI.
-        // A reload is often the cleanest 'End Call' in simple P2P apps.
-        window.location.reload(); 
-    }
+    // Close all active calls if we were tracking them.
+    // Since we rely on PeerJS events, we can just reset the state.
+    // Ideally, we should iterate and close, but for now, we just clear the UI state.
+    // If we want to truly disconnect from the "Room", we should probably close the peer connection or just stop streams.
+    // But for this "Permanent Room" feature, we might just want to leave the room (stop listening) but keep the Peer ID active.
+    // So we won't reload the page.
   }, []);
 
   return {

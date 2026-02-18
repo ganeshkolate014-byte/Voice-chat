@@ -3,11 +3,13 @@ import { useWebRTC } from './hooks/useWebRTC';
 import { Button } from './components/Button';
 import { StreamAudio } from './components/StreamAudio';
 import { StreamVideo } from './components/StreamVideo';
-import { Mic, MicOff, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio, PhoneOff, MessageSquare, Monitor, MonitorOff } from 'lucide-react';
+import { Mic, MicOff, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio, PhoneOff, MessageSquare, Monitor, MonitorOff, ArrowLeft } from 'lucide-react';
 import { VolumeVisualizer } from './components/VolumeVisualizer';
 import { auth, googleProvider } from './services/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { ChatWindow } from './components/ChatWindow';
+import { Lobby } from './components/Lobby';
+import { RoomService } from './services/roomService';
 
 // Helper hook for volume
 const useAudioLevel = (stream: MediaStream | null) => {
@@ -61,6 +63,7 @@ const App: React.FC = () => {
   const [joinId, setJoinId] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const myVolume = useAudioLevel(myStream);
+  const [activeRoomId, setActiveRoomId] = useState<string>('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -76,38 +79,30 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Handle Room Joining/Leaving
   useEffect(() => {
-    if (myId) {
-      const url = new URL(window.location.href);
-      url.searchParams.set('join', myId);
-      setInviteLink(url.toString());
-      
-      if (joinId && isSignalConnected && myStream) {
-         connectToFriend(joinId);
-         const cleanUrl = new URL(window.location.href);
-         cleanUrl.searchParams.delete('join');
-         window.history.replaceState({}, '', cleanUrl.toString());
-      }
+    if (activeRoomId && myId && user) {
+      // Join the room in Realtime DB
+      RoomService.joinRoom(activeRoomId, myId, {
+        displayName: user.displayName || 'Anon',
+        photoURL: user.photoURL || ''
+      });
+
+      // Subscribe to participants
+      const unsubscribe = RoomService.subscribeToParticipants(activeRoomId, (participants) => {
+        participants.forEach(p => {
+          if (p.peerId !== myId) {
+            connectToFriend(p.peerId);
+          }
+        });
+      });
+
+      return () => {
+        unsubscribe();
+        RoomService.leaveRoom(activeRoomId, myId);
+      };
     }
-  }, [myId, joinId, isSignalConnected, myStream, connectToFriend]);
-
-  // Determine Chat Room ID
-  // Logic: If I joined via a link, I use that ID. If I am the host, I use my ID.
-  // The 'joinId' state is cleared after connection, so we need to persist the 'session' concept.
-  // For simplicity: If connected to someone, we use the first connection's peerId if we initiated, or our own if we are hosting.
-  // A more robust way for this specific app structure:
-  // If `join` param was present initially, we are a GUEST in `joinId` room.
-  // If `join` param was NOT present, we are the HOST of `myId` room.
-  const [activeRoomId, setActiveRoomId] = useState<string>('');
-  
-  useEffect(() => {
-      if (joinId) {
-          setActiveRoomId(joinId);
-      } else if (myId && !activeRoomId) {
-          setActiveRoomId(myId);
-      }
-  }, [joinId, myId, activeRoomId]);
-
+  }, [activeRoomId, myId, user, connectToFriend]);
 
   const handleLogin = async () => {
     try {
@@ -119,25 +114,33 @@ const App: React.FC = () => {
   };
 
   const copyLink = () => {
-    if (inviteLink) {
-      navigator.clipboard.writeText(inviteLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    const url = new URL(window.location.href);
+    url.searchParams.set('join', activeRoomId);
+    navigator.clipboard.writeText(url.toString());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
   
   const shareLink = async () => {
-    if (navigator.share && inviteLink) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('join', activeRoomId);
+    if (navigator.share) {
         try {
             await navigator.share({
                 title: 'Voice Chat Invite',
                 text: 'Join my voice room',
-                url: inviteLink
+                url: url.toString()
             });
         } catch (e) { console.log("Share cancelled"); }
     } else {
         copyLink();
     }
+  };
+
+  const handleLeaveRoom = () => {
+    endAllCalls();
+    setActiveRoomId('');
+    setIsChatOpen(false);
   };
 
   // --- LOADER ---
@@ -207,13 +210,43 @@ const App: React.FC = () => {
     );
   }
 
-  // --- DASHBOARD ---
+  // --- LOBBY (Not in a room) ---
+  if (!activeRoomId) {
+    return (
+      <div className="min-h-screen neo-bg text-black flex flex-col overflow-hidden relative">
+        <nav className="h-20 px-6 md:px-12 flex items-center justify-between border-b-[3px] border-black bg-white sticky top-0 z-40">
+          <div className="flex items-center gap-4">
+             <div className={`w-4 h-4 rounded-full border-2 border-black ${isSignalConnected ? 'bg-[#4ade80]' : 'bg-red-500 animate-pulse'}`}></div>
+             <span className="font-black text-2xl tracking-tighter hidden md:block">VOICE_SYNC</span>
+             <span className="font-black text-xl tracking-tighter md:hidden">SYNC</span>
+          </div>
+          <div className="flex items-center gap-4">
+             <div className="hidden md:flex items-center gap-3 pl-2 pr-4 py-2 bg-[#f3f4f6] border-2 border-black rounded-lg">
+                <img src={user.photoURL || ''} alt="User" className="w-8 h-8 rounded border-2 border-black bg-white" />
+                <span className="text-sm font-bold">{user.displayName}</span>
+             </div>
+             <Button variant="danger" onClick={() => signOut(auth)} className="!h-10 !w-10 !p-0 !rounded-lg flex items-center justify-center">
+               <LogOut className="w-5 h-5 ml-0.5" />
+             </Button>
+          </div>
+        </nav>
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 max-w-[1400px] mx-auto w-full">
+          <Lobby onJoinRoom={setActiveRoomId} userDisplayName={user.displayName || 'Anon'} />
+        </main>
+      </div>
+    );
+  }
+
+  // --- ROOM DASHBOARD ---
   return (
     <div className="min-h-screen neo-bg text-black flex flex-col overflow-hidden relative">
 
       {/* Navbar */}
       <nav className="h-20 px-6 md:px-12 flex items-center justify-between border-b-[3px] border-black bg-white sticky top-0 z-40">
         <div className="flex items-center gap-4">
+           <Button variant="secondary" onClick={handleLeaveRoom} className="!h-10 !w-10 !p-0 !rounded-lg !border-2 flex items-center justify-center mr-2">
+              <ArrowLeft className="w-5 h-5" />
+           </Button>
            <div className={`w-4 h-4 rounded-full border-2 border-black ${isSignalConnected ? 'bg-[#4ade80]' : 'bg-red-500 animate-pulse'}`}></div>
            <span className="font-black text-2xl tracking-tighter hidden md:block">VOICE_SYNC</span>
            <span className="font-black text-xl tracking-tighter md:hidden">SYNC</span>
@@ -287,36 +320,16 @@ const App: React.FC = () => {
                   <h3 className="font-bold text-lg uppercase">Invite Squad</h3>
               </div>
               
-              {myId ? (
-                <div className="flex gap-2">
-                    <div className="flex-1 bg-white border-2 border-black rounded-lg p-2 font-mono text-sm truncate flex items-center px-3">
-                        {inviteLink.replace(/^https?:\/\//, '')}
-                    </div>
-                     <Button variant="secondary" onClick={copyLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
-                         {copied ? <ShieldCheck className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5" />}
-                     </Button>
-                     <Button variant="primary" onClick={shareLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
-                         <Activity className="w-5 h-5" />
-                     </Button>
-                </div>
-              ) : (
-                <div className="h-10 w-full bg-gray-200 animate-pulse rounded-lg border-2 border-gray-300"></div>
-              )}
-              
-              <div className="flex gap-2 pt-2">
-                 <input 
-                    placeholder="Enter Friend ID..."
-                    className="neo-input flex-1 px-4 py-2"
-                    onKeyDown={(e) => {
-                       if (e.key === 'Enter') connectToFriend((e.target as HTMLInputElement).value);
-                    }}
-                 />
-                 <Button variant="glow" className="!h-auto !px-4 !rounded-lg !border-2" onClick={(e) => {
-                      const input = (e.target as HTMLElement).previousElementSibling as HTMLInputElement;
-                      connectToFriend(input.value);
-                 }}>
-                    JOIN
-                 </Button>
+              <div className="flex gap-2">
+                  <div className="flex-1 bg-white border-2 border-black rounded-lg p-2 font-mono text-sm truncate flex items-center px-3">
+                      {window.location.origin}?join={activeRoomId}
+                  </div>
+                   <Button variant="secondary" onClick={copyLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
+                       {copied ? <ShieldCheck className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5" />}
+                   </Button>
+                   <Button variant="primary" onClick={shareLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
+                       <Activity className="w-5 h-5" />
+                   </Button>
               </div>
            </div>
         </div>
@@ -372,9 +385,9 @@ const App: React.FC = () => {
           </button>
 
          <button 
-            onClick={endAllCalls}
+            onClick={handleLeaveRoom}
             className="w-16 h-16 rounded-xl border-2 border-black flex items-center justify-center bg-red-500 hover:bg-red-600 transition-all active:scale-95 shadow-[3px_3px_0px_0px_#000] active:shadow-none active:translate-y-[3px] active:translate-x-[3px]"
-            title="End Call (Cut)"
+            title="Leave Room"
          >
             <PhoneOff className="w-8 h-8 text-white fill-current" />
          </button>
