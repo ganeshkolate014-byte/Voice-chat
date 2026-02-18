@@ -1,0 +1,21 @@
+{
+  "name": "Minecraft Voice Chat",
+  "short_name": "MC Voice",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://api.dicebear.com/7.x/pixel-art/png?seed=MCVoice",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/pixel-art/png?seed=MCVoice",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

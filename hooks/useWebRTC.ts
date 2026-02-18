@@ -48,8 +48,15 @@ export const useWebRTC = () => {
       myStreamRef.current = stream;
       setMyStream(stream);
 
-      // 2. Initialize PeerJS
-      const peer = new Peer();
+      // 2. Initialize PeerJS with STUN servers for Mobile/NAT traversal
+      const peer = new Peer({
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' }
+          ]
+        }
+      });
       peerRef.current = peer;
 
       peer.on('open', (id) => {
