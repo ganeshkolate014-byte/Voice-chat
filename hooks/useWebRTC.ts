@@ -9,6 +9,7 @@ export const useWebRTC = () => {
   const [status, setStatus] = useState<CallStatus>(CallStatus.IDLE);
   const [error, setError] = useState<string | null>(null);
   const [isSignalConnected, setIsSignalConnected] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
 
   const peerRef = useRef<Peer | null>(null);
   const myStreamRef = useRef<MediaStream | null>(null);
@@ -111,6 +112,16 @@ export const useWebRTC = () => {
     }
   }, []);
 
+  const toggleMic = useCallback(() => {
+    if (myStreamRef.current) {
+      const audioTrack = myStreamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsMuted(!audioTrack.enabled);
+      }
+    }
+  }, []);
+
   const connectToFriend = useCallback((friendId: string) => {
     if (!peerRef.current || !myStreamRef.current) {
         setError("Voice not enabled. Click 'Start' first.");
@@ -146,15 +157,18 @@ export const useWebRTC = () => {
   }, [connections, myId, isSignalConnected]);
 
   const disconnectFromFriend = useCallback((friendId: string) => {
-    // PeerJS doesn't expose an easy "close call by peerId" method on the Peer object
-    // In a real app we'd map calls. For now we just remove from UI.
-    // The MediaConnection object itself should be closed if we had a reference.
-    // Ideally we'd store { [peerId]: MediaConnection } in a Ref.
-    
     setConnections(prev => prev.filter(c => c.peerId !== friendId));
-    // NOTE: This doesn't actually stop the data stream on the other end immediately 
-    // unless we had the call object to .close(). 
-    // For this simple version, we assume user just wants to hide them or they left.
+    // Note: PeerJS MediaConnection.close() should be called if we tracked the connection object directly in the array
+  }, []);
+
+  const endAllCalls = useCallback(() => {
+    setConnections([]);
+    if (peerRef.current) {
+        // Just destroy and recreate peer if needed, or loop connections and close.
+        // For simple P2P mesh without full connection tracking map, we clear UI.
+        // A reload is often the cleanest 'End Call' in simple P2P apps.
+        window.location.reload(); 
+    }
   }, []);
 
   return {
@@ -164,8 +178,11 @@ export const useWebRTC = () => {
     status,
     error,
     isSignalConnected,
+    isMuted,
     enableVoice,
+    toggleMic,
     connectToFriend,
-    disconnectFromFriend
+    disconnectFromFriend,
+    endAllCalls
   };
 };

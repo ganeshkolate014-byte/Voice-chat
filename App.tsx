@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useWebRTC } from './hooks/useWebRTC';
 import { Button } from './components/Button';
 import { StreamAudio } from './components/StreamAudio';
-import { Mic, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio } from 'lucide-react';
+import { Mic, MicOff, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio, PhoneOff, MessageSquare } from 'lucide-react';
 import { VolumeVisualizer } from './components/VolumeVisualizer';
 import { auth, googleProvider } from './services/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { ChatWindow } from './components/ChatWindow';
 
 // Helper hook for volume
 const useAudioLevel = (stream: MediaStream | null) => {
@@ -53,10 +54,11 @@ const useAudioLevel = (stream: MediaStream | null) => {
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const { myId, myStream, connections, error, enableVoice, connectToFriend, disconnectFromFriend, isSignalConnected } = useWebRTC();
+  const { myId, myStream, connections, error, enableVoice, connectToFriend, disconnectFromFriend, isSignalConnected, isMuted, toggleMic, endAllCalls } = useWebRTC();
   const [copied, setCopied] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
   const [joinId, setJoinId] = useState('');
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const myVolume = useAudioLevel(myStream);
 
   useEffect(() => {
@@ -84,10 +86,27 @@ const App: React.FC = () => {
          const cleanUrl = new URL(window.location.href);
          cleanUrl.searchParams.delete('join');
          window.history.replaceState({}, '', cleanUrl.toString());
-         setJoinId('');
       }
     }
   }, [myId, joinId, isSignalConnected, myStream, connectToFriend]);
+
+  // Determine Chat Room ID
+  // Logic: If I joined via a link, I use that ID. If I am the host, I use my ID.
+  // The 'joinId' state is cleared after connection, so we need to persist the 'session' concept.
+  // For simplicity: If connected to someone, we use the first connection's peerId if we initiated, or our own if we are hosting.
+  // A more robust way for this specific app structure:
+  // If `join` param was present initially, we are a GUEST in `joinId` room.
+  // If `join` param was NOT present, we are the HOST of `myId` room.
+  const [activeRoomId, setActiveRoomId] = useState<string>('');
+  
+  useEffect(() => {
+      if (joinId) {
+          setActiveRoomId(joinId);
+      } else if (myId && !activeRoomId) {
+          setActiveRoomId(myId);
+      }
+  }, [joinId, myId, activeRoomId]);
+
 
   const handleLogin = async () => {
     try {
@@ -135,25 +154,21 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen neo-bg flex flex-col items-center justify-center p-6">
         <div className="neo-card p-10 max-w-md w-full flex flex-col gap-8 items-center text-center relative">
-          
           <div className="w-24 h-24 bg-[#FDE047] border-[3px] border-black rounded-full flex items-center justify-center shadow-[4px_4px_0px_0px_#000]">
              <Sparkles className="w-10 h-10 text-black" />
           </div>
-          
           <div className="space-y-2">
              <h1 className="text-5xl font-black text-black tracking-tight">VOICE<br/>SYNC</h1>
              <p className="text-gray-600 text-lg font-medium border-2 border-black bg-white inline-block px-3 py-1 -rotate-2">
                Simple. Raw. Fast.
              </p>
           </div>
-
           <div className="w-full space-y-4">
              <Button onClick={handleLogin} variant="primary" fullWidth className="text-lg h-14">
                 <Globe className="w-6 h-6" />
                 CONNECT WITH GOOGLE
              </Button>
           </div>
-          
           {joinId && (
             <div className="bg-[#86efac] text-black font-bold border-2 border-black px-4 py-2 rounded-lg flex items-center gap-2 shadow-[2px_2px_0px_0px_#000]">
                 <Zap className="w-5 h-5 fill-black" /> INVITE DETECTED
@@ -169,24 +184,20 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen neo-bg flex flex-col items-center justify-center p-6 text-center">
          <div className="neo-card max-w-lg w-full p-12 flex flex-col gap-8 items-center relative">
-           
            <div className="w-24 h-24 bg-[#FCA5A5] border-[3px] border-black rounded-full flex items-center justify-center shadow-[4px_4px_0px_0px_#000]">
              <Mic className="w-10 h-10 text-black" />
            </div>
-           
            <div className="space-y-4">
                <h2 className="text-4xl font-black text-black uppercase">Mic Check</h2>
                <p className="text-black/70 text-lg font-medium">
-                 We need your microphone to transmit audio. No creepy stuff, we promise.
+                 We need your microphone to transmit audio.
                </p>
            </div>
-           
            {error && (
              <div className="bg-red-100 border-2 border-red-500 text-red-600 p-4 rounded-xl w-full font-bold">
                 ⚠️ {error}
              </div>
            )}
-           
            <Button onClick={enableVoice} variant="glow" fullWidth className="h-16 text-xl">
              ENABLE MICROPHONE
            </Button>
@@ -197,13 +208,14 @@ const App: React.FC = () => {
 
   // --- DASHBOARD ---
   return (
-    <div className="min-h-screen neo-bg text-black flex flex-col overflow-hidden">
+    <div className="min-h-screen neo-bg text-black flex flex-col overflow-hidden relative">
 
       {/* Navbar */}
-      <nav className="h-20 px-6 md:px-12 flex items-center justify-between border-b-[3px] border-black bg-white sticky top-0 z-50">
+      <nav className="h-20 px-6 md:px-12 flex items-center justify-between border-b-[3px] border-black bg-white sticky top-0 z-40">
         <div className="flex items-center gap-4">
            <div className={`w-4 h-4 rounded-full border-2 border-black ${isSignalConnected ? 'bg-[#4ade80]' : 'bg-red-500 animate-pulse'}`}></div>
-           <span className="font-black text-2xl tracking-tighter">VOICE_SYNC</span>
+           <span className="font-black text-2xl tracking-tighter hidden md:block">VOICE_SYNC</span>
+           <span className="font-black text-xl tracking-tighter md:hidden">SYNC</span>
         </div>
 
         <div className="flex items-center gap-4">
@@ -217,12 +229,12 @@ const App: React.FC = () => {
         </div>
       </nav>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 max-w-[1400px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 max-w-[1400px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 pb-32">
         
         {/* LEFT COLUMN: Controls & My Status */}
         <div className="lg:col-span-4 flex flex-col gap-6">
            {/* My Card */}
-           <div className="neo-card p-6 flex flex-col gap-6">
+           <div className="neo-card p-6 flex flex-col gap-6 bg-white relative">
               <div className="flex flex-col items-center gap-4">
                  <div className="relative">
                     <div className="w-32 h-32 border-[3px] border-black rounded-2xl overflow-hidden bg-white shadow-[4px_4px_0px_0px_#000]">
@@ -232,6 +244,11 @@ const App: React.FC = () => {
                     <div className="absolute -bottom-3 -right-3 bg-[#C4B5FD] border-2 border-black px-2 py-1 text-xs font-bold rounded-md shadow-[2px_2px_0px_0px_#000]">
                         YOU
                     </div>
+                    {isMuted && (
+                        <div className="absolute top-2 left-2 bg-red-500 border-2 border-black text-white p-1 rounded">
+                            <MicOff className="w-4 h-4" />
+                        </div>
+                    )}
                  </div>
                  
                  <div className="text-center w-full">
@@ -244,9 +261,9 @@ const App: React.FC = () => {
                  <div className="w-full bg-[#f3f4f6] border-2 border-black rounded-lg p-4 mt-2">
                     <div className="flex justify-between text-xs font-bold uppercase mb-2">
                         <span>Mic Gain</span>
-                        <span>{Math.round(myVolume * 100)}%</span>
+                        <span>{isMuted ? 'MUTED' : `${Math.round(myVolume * 100)}%`}</span>
                     </div>
-                    <VolumeVisualizer volume={myVolume} isActive={true} bars={20} />
+                    <VolumeVisualizer volume={myVolume} isActive={!isMuted} bars={20} />
                  </div>
               </div>
            </div>
@@ -324,12 +341,46 @@ const App: React.FC = () => {
              </div>
            )}
         </div>
-
       </main>
+
+      {/* Floating Control Bar (Mute, Cut, Chat) */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white border-[3px] border-black p-2 rounded-2xl shadow-[6px_6px_0px_0px_#000] z-50 flex items-center gap-4">
+         <button 
+            onClick={toggleMic}
+            className={`w-14 h-14 rounded-xl border-2 border-black flex items-center justify-center transition-all active:scale-95 shadow-[3px_3px_0px_0px_#000] active:shadow-none active:translate-y-[3px] active:translate-x-[3px] ${isMuted ? 'bg-red-200' : 'bg-white hover:bg-gray-50'}`}
+            title={isMuted ? "Unmute" : "Mute"}
+         >
+            {isMuted ? <MicOff className="w-6 h-6 text-red-600" /> : <Mic className="w-6 h-6 text-black" />}
+         </button>
+
+         <button 
+            onClick={endAllCalls}
+            className="w-16 h-16 rounded-xl border-2 border-black flex items-center justify-center bg-red-500 hover:bg-red-600 transition-all active:scale-95 shadow-[3px_3px_0px_0px_#000] active:shadow-none active:translate-y-[3px] active:translate-x-[3px]"
+            title="End Call (Cut)"
+         >
+            <PhoneOff className="w-8 h-8 text-white fill-current" />
+         </button>
+
+         <button 
+            onClick={() => setIsChatOpen(!isChatOpen)}
+            className={`w-14 h-14 rounded-xl border-2 border-black flex items-center justify-center transition-all active:scale-95 shadow-[3px_3px_0px_0px_#000] active:shadow-none active:translate-y-[3px] active:translate-x-[3px] ${isChatOpen ? 'bg-[#FDE047]' : 'bg-white hover:bg-gray-50'}`}
+            title="Chat"
+         >
+            <MessageSquare className="w-6 h-6 text-black" />
+         </button>
+      </div>
+
+      {/* Chat Window Overlay */}
+      <ChatWindow 
+        isOpen={isChatOpen} 
+        onClose={() => setIsChatOpen(false)} 
+        roomId={activeRoomId} 
+        userDisplayName={user.displayName || 'Anon'} 
+      />
 
       {/* Floating Error Toast */}
       {error && (
-         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-[#FECACA] border-[3px] border-black text-black px-6 py-4 rounded-xl shadow-[8px_8px_0px_0px_#000] z-50 animate-bounce flex items-center gap-4">
+         <div className="fixed top-8 left-1/2 -translate-x-1/2 bg-[#FECACA] border-[3px] border-black text-black px-6 py-4 rounded-xl shadow-[8px_8px_0px_0px_#000] z-[100] animate-bounce flex items-center gap-4">
             <span className="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold border border-black">!</span>
             <span className="font-bold">{error}</span>
          </div>
@@ -364,7 +415,7 @@ const ParticipantCard: React.FC<{ connection: any, onDisconnect: (id: string) =>
           <button 
              onClick={() => onDisconnect(connection.peerId)}
              className="bg-white border-2 border-black text-black hover:bg-[#FCA5A5] transition-colors p-2 rounded-lg shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
-             title="Kick"
+             title="Kick / Disconnect"
           >
              <LogOut className="w-5 h-5" />
           </button>
