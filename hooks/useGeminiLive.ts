@@ -36,9 +36,6 @@ export const useGeminiLive = () => {
     // Close session
     if (sessionRef.current) {
       sessionRef.current.then((session: any) => {
-         // There is no explicit close method on the session object in the current API version 
-         // shown in docs, but usually we just stop sending data and close contexts.
-         // If a .close() exists we call it. 
          if(session.close) session.close();
       }).catch(() => {});
       sessionRef.current = null;
@@ -102,7 +99,13 @@ export const useGeminiLive = () => {
       outputNode.connect(outputCtx.destination);
 
       // Get Microphone Stream
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
       streamRef.current = stream;
 
       // Start Session
@@ -138,30 +141,18 @@ export const useGeminiLive = () => {
             };
 
             source.connect(processor);
-            processor.connect(inputCtx.destination);
+            // CRITICAL FIX: Do NOT connect processor to destination, or you will hear yourself!
+            // processor.connect(inputCtx.destination); 
+            // We only need the processor to run. In modern browsers, it might stop if not connected.
+            // A workaround is to connect to a Gain node with 0 gain, then to destination.
+            const muteNode = inputCtx.createGain();
+            muteNode.gain.value = 0;
+            processor.connect(muteNode);
+            muteNode.connect(inputCtx.destination);
           },
           onmessage: async (message: LiveServerMessage) => {
-            // Handle Transcripts
-            if (message.serverContent?.outputTranscription) {
-              // We could buffer this, but for simplicity let's just show completion
-              // The API sends chunks. For a real app we'd stream text.
-              // Here we rely on 'turnComplete' to finalize, or just update live.
-              // To keep it clean in UI, we might ignore partials or update the last message.
-              // For now, let's rely on turnComplete for full messages to avoid jittery UI
-            }
-            
             if (message.serverContent?.turnComplete) {
-               // Due to async nature, capturing the exact text here is tricky without state buffering.
-               // We will use the 'inputAudioTranscription' and 'outputAudioTranscription' signals if we want text.
-               // Currently we just log.
-               // See Prompt: "transcriptionHistory.push" pattern.
-            }
-
-             // Handle Input/Output Transcription (Real-time updates)
-            if (message.serverContent?.outputTranscription?.text) {
-               // This is a simplified way to show text. In a full app, you'd manage a "current turn" buffer.
-               // For this demo, we won't print every character to the log to avoid spam, 
-               // but we will visualize the event.
+               // Handle turn complete
             }
 
             // Handle Audio Output
@@ -191,7 +182,6 @@ export const useGeminiLive = () => {
                }
             }
             
-            // Handle Interruption
             if (message.serverContent?.interrupted) {
                audioSourcesRef.current.forEach(s => s.stop());
                audioSourcesRef.current.clear();
@@ -213,13 +203,6 @@ export const useGeminiLive = () => {
         },
         config: {
           responseModalities: [Modality.AUDIO],
-          // Enable transcription so we (in future) could show text bubbles
-          inputAudioTranscription: { model: "google-provided-model" }, 
-          outputAudioTranscription: { model: "google-provided-model" },
-          systemInstruction: `You are a Minecraft companion. You speak with the enthusiasm of a seasoned player. 
-          Your knowledge covers everything from crafting recipes to Redstone logic and biome exploration. 
-          Use Minecraft slang like 'griefer', 'mob', 'spawn', 'diamond level', 'nether portal'. 
-          Keep responses concise and conversational, suitable for voice chat. Do not output markdown, just plain spoken text style.`,
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } }
           }

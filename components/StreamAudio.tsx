@@ -2,9 +2,10 @@ import React, { useEffect, useRef } from 'react';
 
 interface StreamAudioProps {
   stream: MediaStream;
+  muted?: boolean;
 }
 
-export const StreamAudio: React.FC<StreamAudioProps> = ({ stream }) => {
+export const StreamAudio: React.FC<StreamAudioProps> = ({ stream, muted = false }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -16,6 +17,13 @@ export const StreamAudio: React.FC<StreamAudioProps> = ({ stream }) => {
   }, [stream]);
 
   return (
-    <audio ref={audioRef} autoPlay playsInline controls={false} className="hidden" />
+    <audio 
+      ref={audioRef} 
+      autoPlay 
+      playsInline 
+      controls={false} 
+      className="hidden" 
+      muted={muted}
+    />
   );
 };

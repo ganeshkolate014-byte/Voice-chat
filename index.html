@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#020617" />
+    <meta name="theme-color" content="#000000" />
     <title>Voice Chat</title>
     <link rel="manifest" href="/manifest.json">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -13,24 +13,82 @@
     <style>
       body {
         font-family: 'Outfit', sans-serif;
-        background-color: #020617;
+        background-color: #000000;
         color: white;
+        overflow-x: hidden;
       }
       * {
         -webkit-tap-highlight-color: transparent;
       }
-      .mesh-bg {
-        background-color: #000000;
-        background-image: 
-          radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-          radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
-          radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+      
+      /* Liquid Background Styles */
+      .liquid-wrapper {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: -1;
+        overflow: hidden;
+        background: #050505;
       }
+      
+      .liquid-blob {
+        position: absolute;
+        filter: blur(80px);
+        opacity: 0.6;
+        border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+        animation: morph 15s linear infinite alternate, drift 20s linear infinite;
+        will-change: transform, border-radius;
+      }
+      
+      .blob-1 {
+        top: -10%;
+        left: -10%;
+        width: 50vw;
+        height: 50vw;
+        background: linear-gradient(135deg, #4f46e5, #8b5cf6);
+        animation-duration: 25s;
+      }
+      
+      .blob-2 {
+        bottom: -10%;
+        right: -10%;
+        width: 60vw;
+        height: 60vw;
+        background: linear-gradient(135deg, #ec4899, #d946ef);
+        animation-duration: 30s;
+        animation-direction: alternate-reverse;
+      }
+      
+      .blob-3 {
+        top: 40%;
+        left: 40%;
+        width: 40vw;
+        height: 40vw;
+        background: linear-gradient(135deg, #06b6d4, #3b82f6);
+        animation-duration: 20s;
+        opacity: 0.4;
+      }
+
+      @keyframes morph {
+        0% { border-radius: 40% 60% 70% 30% / 40% 40% 60% 50%; }
+        33% { border-radius: 70% 30% 50% 50% / 30% 30% 70% 70%; }
+        66% { border-radius: 100% 60% 60% 100% / 100% 100% 60% 60%; }
+        100% { border-radius: 69% 73% 83% 43% / 48% 66% 36% 56%; }
+      }
+
+      @keyframes drift {
+        0% { transform: translate(0, 0) rotate(0deg); }
+        100% { transform: translate(100px, 50px) rotate(360deg); }
+      }
+
       .glass-panel {
-        background: rgba(255, 255, 255, 0.03);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(10, 10, 10, 0.4);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
       }
     </style>
   <script type="importmap">
