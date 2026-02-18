@@ -1,0 +1,7 @@
+{
+  "name": "Minecraft Friends Voice Chat",
+  "description": "A real-time P2P voice chat for Minecraft friends. Connect directly using Friend IDs.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
