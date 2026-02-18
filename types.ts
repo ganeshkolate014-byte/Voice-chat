@@ -30,3 +30,17 @@ export interface ChatMessage {
   sender: Sender;
   timestamp: Date;
 }
+
+export interface Room {
+  id: string;
+  name: string;
+  hostPeerId: string;
+  createdBy: string;
+  createdAt: number;
+}
+
+export interface RecentRoom {
+  roomId: string;
+  roomName: string;
+  lastVisited: number;
+}

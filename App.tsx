@@ -2,11 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useWebRTC } from './hooks/useWebRTC';
 import { Button } from './components/Button';
 import { StreamAudio } from './components/StreamAudio';
-import { Mic, MicOff, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio, PhoneOff, MessageSquare } from 'lucide-react';
+import { Mic, MicOff, Users, Copy, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio, PhoneOff, MessageSquare, Plus, Clock, Hash } from 'lucide-react';
 import { VolumeVisualizer } from './components/VolumeVisualizer';
-import { auth, googleProvider } from './services/firebase';
+import { auth, googleProvider, createPermanentRoom, getRoomById, addToRecents, updateRoomHost, getMyRooms, getRecents } from './services/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { ChatWindow } from './components/ChatWindow';
+import { Room, RecentRoom } from './types';
+import { onValue, ref } from 'firebase/database';
+import { database } from './services/firebase';
 
 // Helper hook for volume
 const useAudioLevel = (stream: MediaStream | null) => {
@@ -57,15 +60,16 @@ const App: React.FC = () => {
   const { myId, myStream, connections, error, enableVoice, connectToFriend, disconnectFromFriend, isSignalConnected, isMuted, toggleMic, endAllCalls } = useWebRTC();
   const [copied, setCopied] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
-  const [joinId, setJoinId] = useState('');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const myVolume = useAudioLevel(myStream);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const joinParam = params.get('join');
-    if (joinParam) setJoinId(joinParam);
-  }, []);
+  // Room State
+  const [activeRoomId, setActiveRoomId] = useState<string>('');
+  const [permanentRoomName, setPermanentRoomName] = useState<string>('');
+  const [recentRooms, setRecentRooms] = useState<RecentRoom[]>([]);
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [newRoomName, setNewRoomName] = useState('');
+  const [joinRoomId, setJoinRoomId] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -75,37 +79,89 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Load Recents
   useEffect(() => {
-    if (myId) {
-      const url = new URL(window.location.href);
-      url.searchParams.set('join', myId);
-      setInviteLink(url.toString());
-      
-      if (joinId && isSignalConnected && myStream) {
-         connectToFriend(joinId);
-         const cleanUrl = new URL(window.location.href);
-         cleanUrl.searchParams.delete('join');
-         window.history.replaceState({}, '', cleanUrl.toString());
-      }
+    if (user) {
+        const fetchRecents = () => {
+            onValue(ref(database, `users/${user.uid}/recentRooms`), (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    const sorted = Object.values(data).sort((a: any, b: any) => b.lastVisited - a.lastVisited) as RecentRoom[];
+                    setRecentRooms(sorted);
+                }
+            });
+        };
+        fetchRecents();
     }
-  }, [myId, joinId, isSignalConnected, myStream, connectToFriend]);
+  }, [user]);
 
-  // Determine Chat Room ID
-  // Logic: If I joined via a link, I use that ID. If I am the host, I use my ID.
-  // The 'joinId' state is cleared after connection, so we need to persist the 'session' concept.
-  // For simplicity: If connected to someone, we use the first connection's peerId if we initiated, or our own if we are hosting.
-  // A more robust way for this specific app structure:
-  // If `join` param was present initially, we are a GUEST in `joinId` room.
-  // If `join` param was NOT present, we are the HOST of `myId` room.
-  const [activeRoomId, setActiveRoomId] = useState<string>('');
-  
+  // Handle URL params and Room Logic
   useEffect(() => {
-      if (joinId) {
-          setActiveRoomId(joinId);
-      } else if (myId && !activeRoomId) {
-          setActiveRoomId(myId);
+    const params = new URLSearchParams(window.location.search);
+    const roomParam = params.get('room');
+    
+    if (roomParam) setJoinRoomId(roomParam);
+  }, []);
+
+  // Update Host ID for my persistent rooms whenever my Peer ID changes
+  useEffect(() => {
+    if (user && myId && isSignalConnected) {
+        const updateMyRooms = async () => {
+            const myRooms = await getMyRooms(user.uid);
+            myRooms.forEach(room => {
+                updateRoomHost(room.id, myId);
+            });
+        };
+        updateMyRooms();
+    }
+  }, [user, myId, isSignalConnected]);
+
+  // Attempt to join room if URL param exists
+  useEffect(() => {
+    const joinRoom = async () => {
+        if (joinRoomId && myId && isSignalConnected && myStream) {
+            const room = await getRoomById(joinRoomId);
+            if (room) {
+                setActiveRoomId(room.id);
+                setPermanentRoomName(room.name);
+                
+                // If I am not the host, connect to the host
+                if (room.hostPeerId !== myId) {
+                    connectToFriend(room.hostPeerId);
+                }
+                
+                if (user) {
+                   addToRecents(user.uid, room.id, room.name);
+                }
+                
+                // Clear URL param to look cleaner
+                const cleanUrl = new URL(window.location.href);
+                cleanUrl.searchParams.delete('room');
+                window.history.replaceState({}, '', cleanUrl.toString());
+            } else {
+                alert("Room not found or expired.");
+            }
+            setJoinRoomId('');
+        }
+    };
+    joinRoom();
+  }, [joinRoomId, myId, isSignalConnected, myStream, user, connectToFriend]);
+
+  // Generate Invite Link
+  useEffect(() => {
+      const url = new URL(window.location.href);
+      if (activeRoomId) {
+          url.searchParams.set('room', activeRoomId);
+      } else if (myId) {
+          // Fallback to direct peer join if not in a permanent room
+          // url.searchParams.set('join', myId); 
+          // Actually, let's keep direct join hidden to encourage rooms, 
+          // or construct a temporary link if needed.
+          // For now, if no room active, no link shown in main box, 
+          // or we create a temporary one.
       }
-  }, [joinId, myId, activeRoomId]);
+      setInviteLink(url.toString());
+  }, [activeRoomId, myId]);
 
 
   const handleLogin = async () => {
@@ -115,6 +171,46 @@ const App: React.FC = () => {
       console.error(e);
       alert("Login failed");
     }
+  };
+
+  const createRoom = async () => {
+      if (!newRoomName.trim() || !user || !myId) return;
+      
+      try {
+          const roomId = await createPermanentRoom(newRoomName, user.uid, myId);
+          await addToRecents(user.uid, roomId, newRoomName);
+          setActiveRoomId(roomId);
+          setPermanentRoomName(newRoomName);
+          setIsCreatingRoom(false);
+          setNewRoomName('');
+      } catch (e) {
+          console.error(e);
+          alert("Failed to create room");
+      }
+  };
+
+  const joinRecent = async (room: RecentRoom) => {
+      // Just set the ID, the effect hook will handle the connection logic
+      // But wait, the effect hook relies on `joinRoomId` which comes from URL initially.
+      // We need a direct function to "switch room"
+      
+      endAllCalls(); // Clear current
+      const roomData = await getRoomById(room.roomId);
+      
+      if (roomData) {
+          setActiveRoomId(roomData.id);
+          setPermanentRoomName(roomData.name);
+          addToRecents(user!.uid, roomData.id, roomData.name);
+          
+          if (roomData.hostPeerId !== myId) {
+              connectToFriend(roomData.hostPeerId);
+          } else {
+              // I am the host, just update the record to ensure I'm live
+              updateRoomHost(roomData.id, myId!);
+          }
+      } else {
+          alert("Room unavailable");
+      }
   };
 
   const copyLink = () => {
@@ -160,7 +256,7 @@ const App: React.FC = () => {
           <div className="space-y-2">
              <h1 className="text-5xl font-black text-black tracking-tight">VOICE<br/>SYNC</h1>
              <p className="text-gray-600 text-lg font-medium border-2 border-black bg-white inline-block px-3 py-1 -rotate-2">
-               Simple. Raw. Fast.
+               Permanent Rooms & Voice Chat
              </p>
           </div>
           <div className="w-full space-y-4">
@@ -169,11 +265,6 @@ const App: React.FC = () => {
                 CONNECT WITH GOOGLE
              </Button>
           </div>
-          {joinId && (
-            <div className="bg-[#86efac] text-black font-bold border-2 border-black px-4 py-2 rounded-lg flex items-center gap-2 shadow-[2px_2px_0px_0px_#000]">
-                <Zap className="w-5 h-5 fill-black" /> INVITE DETECTED
-            </div>
-          )}
         </div>
       </div>
     );
@@ -190,7 +281,7 @@ const App: React.FC = () => {
            <div className="space-y-4">
                <h2 className="text-4xl font-black text-black uppercase">Mic Check</h2>
                <p className="text-black/70 text-lg font-medium">
-                 We need your microphone to transmit audio.
+                 Enable microphone to start creating or joining rooms.
                </p>
            </div>
            {error && (
@@ -216,6 +307,12 @@ const App: React.FC = () => {
            <div className={`w-4 h-4 rounded-full border-2 border-black ${isSignalConnected ? 'bg-[#4ade80]' : 'bg-red-500 animate-pulse'}`}></div>
            <span className="font-black text-2xl tracking-tighter hidden md:block">VOICE_SYNC</span>
            <span className="font-black text-xl tracking-tighter md:hidden">SYNC</span>
+           {permanentRoomName && (
+               <div className="hidden md:flex items-center gap-2 bg-[#FDE047] px-3 py-1 border-2 border-black rounded-lg shadow-[2px_2px_0px_0px_#000] ml-4">
+                   <Hash className="w-4 h-4" />
+                   <span className="font-bold uppercase">{permanentRoomName}</span>
+               </div>
+           )}
         </div>
 
         <div className="flex items-center gap-4">
@@ -254,7 +351,7 @@ const App: React.FC = () => {
                  <div className="text-center w-full">
                     <h2 className="text-2xl font-black uppercase">{user.displayName}</h2>
                     <div className="inline-block bg-black text-white px-2 py-0.5 text-xs font-mono mt-1 rounded">
-                        ID: {myId?.substring(0,8)}
+                        {permanentRoomName ? `ROOM: ${permanentRoomName}` : 'NO ROOM'}
                     </div>
                  </div>
 
@@ -268,46 +365,84 @@ const App: React.FC = () => {
               </div>
            </div>
 
-           {/* Invite Section */}
-           <div className="neo-card p-6 flex flex-col gap-4 bg-[#FFFBEB]">
-              <div className="flex items-center gap-3 border-b-2 border-black pb-3">
-                  <div className="p-1.5 bg-black text-white rounded">
-                    <Share2 className="w-5 h-5" />
-                  </div>
-                  <h3 className="font-bold text-lg uppercase">Invite Squad</h3>
-              </div>
-              
-              {myId ? (
-                <div className="flex gap-2">
-                    <div className="flex-1 bg-white border-2 border-black rounded-lg p-2 font-mono text-sm truncate flex items-center px-3">
-                        {inviteLink.replace(/^https?:\/\//, '')}
+           {/* Create / Invite Section */}
+           {activeRoomId ? (
+                <div className="neo-card p-6 flex flex-col gap-4 bg-[#FFFBEB]">
+                    <div className="flex items-center gap-3 border-b-2 border-black pb-3">
+                        <div className="p-1.5 bg-black text-white rounded">
+                            <Share2 className="w-5 h-5" />
+                        </div>
+                        <h3 className="font-bold text-lg uppercase">Invite Squad</h3>
                     </div>
-                     <Button variant="secondary" onClick={copyLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
-                         {copied ? <ShieldCheck className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5" />}
-                     </Button>
-                     <Button variant="primary" onClick={shareLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
-                         <Activity className="w-5 h-5" />
-                     </Button>
+                    <div className="flex gap-2">
+                        <div className="flex-1 bg-white border-2 border-black rounded-lg p-2 font-mono text-sm truncate flex items-center px-3">
+                            {inviteLink.replace(/^https?:\/\//, '')}
+                        </div>
+                        <Button variant="secondary" onClick={copyLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
+                            {copied ? <ShieldCheck className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5" />}
+                        </Button>
+                        <Button variant="primary" onClick={shareLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
+                            <Activity className="w-5 h-5" />
+                        </Button>
+                    </div>
+                    <p className="text-xs font-bold text-gray-500 text-center">Share this link to let friends join <span className="text-black bg-[#FDE047] px-1">{permanentRoomName}</span></p>
                 </div>
-              ) : (
-                <div className="h-10 w-full bg-gray-200 animate-pulse rounded-lg border-2 border-gray-300"></div>
-              )}
-              
-              <div className="flex gap-2 pt-2">
-                 <input 
-                    placeholder="Enter Friend ID..."
-                    className="neo-input flex-1 px-4 py-2"
-                    onKeyDown={(e) => {
-                       if (e.key === 'Enter') connectToFriend((e.target as HTMLInputElement).value);
-                    }}
-                 />
-                 <Button variant="glow" className="!h-auto !px-4 !rounded-lg !border-2" onClick={(e) => {
-                      const input = (e.target as HTMLElement).previousElementSibling as HTMLInputElement;
-                      connectToFriend(input.value);
-                 }}>
-                    JOIN
-                 </Button>
-              </div>
+           ) : (
+                <div className="neo-card p-6 flex flex-col gap-4 bg-[#FFFBEB]">
+                     <div className="flex items-center gap-3 border-b-2 border-black pb-3">
+                        <div className="p-1.5 bg-black text-white rounded">
+                            <Plus className="w-5 h-5" />
+                        </div>
+                        <h3 className="font-bold text-lg uppercase">Create Room</h3>
+                    </div>
+                    
+                    {!isCreatingRoom ? (
+                        <Button onClick={() => setIsCreatingRoom(true)} variant="glow" fullWidth>
+                            CREATE PERMANENT ROOM
+                        </Button>
+                    ) : (
+                        <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-2">
+                            <input 
+                                autoFocus
+                                value={newRoomName}
+                                onChange={(e) => setNewRoomName(e.target.value)}
+                                placeholder="Room Name (e.g. Minecraft Server)" 
+                                className="neo-input p-2"
+                                onKeyDown={(e) => e.key === 'Enter' && createRoom()}
+                            />
+                            <div className="flex gap-2">
+                                <Button onClick={() => setIsCreatingRoom(false)} variant="secondary" className="flex-1 !h-10 text-sm">Cancel</Button>
+                                <Button onClick={createRoom} variant="primary" className="flex-1 !h-10 text-sm">Create</Button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+           )}
+
+           {/* Recent Rooms List */}
+           <div className="neo-card p-6 flex flex-col gap-4 bg-white">
+                <div className="flex items-center gap-3 border-b-2 border-black pb-3">
+                    <div className="p-1.5 bg-black text-white rounded">
+                        <Clock className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-bold text-lg uppercase">Recent Rooms</h3>
+                </div>
+                <div className="flex flex-col gap-2 max-h-60 overflow-y-auto">
+                    {recentRooms.length === 0 ? (
+                        <div className="text-gray-400 text-center text-sm py-4 italic">No recent rooms</div>
+                    ) : (
+                        recentRooms.map(room => (
+                            <button 
+                                key={room.roomId}
+                                onClick={() => joinRecent(room)}
+                                className={`flex items-center justify-between p-3 border-2 border-black rounded-lg transition-all hover:translate-x-[2px] hover:translate-y-[2px] active:scale-95 text-left group ${activeRoomId === room.roomId ? 'bg-[#A7F3D0] shadow-none translate-x-[2px] translate-y-[2px]' : 'bg-white shadow-[3px_3px_0px_0px_#000] hover:shadow-[1px_1px_0px_0px_#000]'}`}
+                            >
+                                <span className="font-bold truncate max-w-[70%]">{room.roomName}</span>
+                                <span className="text-[10px] font-bold bg-black text-white px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">JOIN</span>
+                            </button>
+                        ))
+                    )}
+                </div>
            </div>
         </div>
 
@@ -330,7 +465,9 @@ const App: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-2xl font-black uppercase mb-1">Silence...</h3>
-                  <p className="font-medium text-gray-500 max-w-sm mx-auto">The room is empty. Send invite link to your friends to start yapping.</p>
+                  <p className="font-medium text-gray-500 max-w-sm mx-auto">
+                      {activeRoomId ? "Waiting for squad members to join..." : "Create a room or select one from recents to start."}
+                  </p>
                 </div>
              </div>
            ) : (
