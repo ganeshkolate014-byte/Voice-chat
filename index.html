@@ -3,34 +3,68 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#020617" />
+    <meta name="theme-color" content="#f0f0f0" />
     <title>Voice Chat</title>
     <link rel="manifest" href="/manifest.json">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
       body {
-        font-family: 'Outfit', sans-serif;
-        background-color: #020617;
-        color: white;
+        font-family: 'Space Grotesk', sans-serif;
+        background-color: #f3f4f6;
+        color: #000;
+        overflow-x: hidden;
       }
       * {
         -webkit-tap-highlight-color: transparent;
       }
-      .mesh-bg {
-        background-color: #000000;
-        background-image: 
-          radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-          radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
-          radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+      
+      /* Neo-Brutalist Background Pattern */
+      .neo-bg {
+        background-color: #E0E7FF; /* Soft Indigo */
+        background-image: radial-gradient(#000000 1.5px, transparent 1.5px);
+        background-size: 24px 24px;
       }
-      .glass-panel {
-        background: rgba(255, 255, 255, 0.03);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+
+      /* Neo-Brutalist Card */
+      .neo-card {
+        background: #fff;
+        border: 3px solid #000;
+        box-shadow: 6px 6px 0px 0px #000;
+        border-radius: 12px;
+        transition: transform 0.2s ease-in-out;
+      }
+
+      /* Input Fields */
+      .neo-input {
+        background: #fff;
+        border: 3px solid #000;
+        border-radius: 8px;
+        box-shadow: 4px 4px 0px 0px rgba(0,0,0,0.1);
+        font-weight: 600;
+        transition: all 0.2s;
+      }
+      .neo-input:focus {
+        outline: none;
+        box-shadow: 4px 4px 0px 0px #000;
+        transform: translate(-1px, -1px);
+      }
+
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 14px;
+        border-left: 3px solid black;
+        background: #fff;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #000;
+        border: 2px solid #fff;
+        border-radius: 0;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #333;
       }
     </style>
   <script type="importmap">

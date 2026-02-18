@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useWebRTC } from './hooks/useWebRTC';
 import { Button } from './components/Button';
 import { StreamAudio } from './components/StreamAudio';
-import { Mic, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe } from 'lucide-react';
+import { Mic, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio } from 'lucide-react';
 import { VolumeVisualizer } from './components/VolumeVisualizer';
 import { auth, googleProvider } from './services/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
@@ -24,7 +24,7 @@ const useAudioLevel = (stream: MediaStream | null) => {
     if (ctx.state === 'suspended') ctx.resume();
 
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
+    analyser.fftSize = 128;
     analyserRef.current = analyser;
 
     const source = ctx.createMediaStreamSource(stream);
@@ -35,9 +35,8 @@ const useAudioLevel = (stream: MediaStream | null) => {
       analyser.getByteFrequencyData(dataArray);
       let sum = 0;
       for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
-      // Smoothening
-      const instantVolume = Math.min((sum / dataArray.length) / 100, 1);
-      setVolume(prev => prev * 0.8 + instantVolume * 0.2); // Simple low-pass filter for smoothness
+      const instantVolume = Math.min((sum / dataArray.length) / 80, 1.5); 
+      setVolume(prev => prev * 0.7 + instantVolume * 0.3); 
       rafRef.current = requestAnimationFrame(update);
     };
     update();
@@ -60,16 +59,12 @@ const App: React.FC = () => {
   const [joinId, setJoinId] = useState('');
   const myVolume = useAudioLevel(myStream);
 
-  // Check for invite link in URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const joinParam = params.get('join');
-    if (joinParam) {
-      setJoinId(joinParam);
-    }
+    if (joinParam) setJoinId(joinParam);
   }, []);
 
-  // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -78,20 +73,18 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Generate Invite Link when ID is available
   useEffect(() => {
     if (myId) {
       const url = new URL(window.location.href);
       url.searchParams.set('join', myId);
       setInviteLink(url.toString());
       
-      // Auto-join if pending
       if (joinId && isSignalConnected && myStream) {
          connectToFriend(joinId);
          const cleanUrl = new URL(window.location.href);
          cleanUrl.searchParams.delete('join');
          window.history.replaceState({}, '', cleanUrl.toString());
-         setJoinId(''); // Clear pending
+         setJoinId('');
       }
     }
   }, [myId, joinId, isSignalConnected, myStream, connectToFriend]);
@@ -117,11 +110,11 @@ const App: React.FC = () => {
     if (navigator.share && inviteLink) {
         try {
             await navigator.share({
-                title: 'Join my Voice Chat',
-                text: 'Click to join the call',
+                title: 'Voice Chat Invite',
+                text: 'Join my voice room',
                 url: inviteLink
             });
-        } catch (e) { console.log("Share failed/cancelled"); }
+        } catch (e) { console.log("Share cancelled"); }
     } else {
         copyLink();
     }
@@ -129,48 +122,41 @@ const App: React.FC = () => {
 
   // --- LOADER ---
   if (loading) return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-16 h-16 border-4 border-violet-600 border-t-transparent rounded-full animate-spin"></div>
+    <div className="min-h-screen bg-[#E0E7FF] flex items-center justify-center">
+        <div className="neo-card p-6 flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-black border-t-transparent rounded-full animate-spin"></div>
+            <span className="font-bold text-xl">LOADING_ASSETS</span>
+        </div>
     </div>
   );
 
   // --- LOGIN SCREEN ---
   if (!user) {
     return (
-      <div className="min-h-screen mesh-bg flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        {/* Dynamic Background */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-           <div className="absolute top-0 left-1/4 w-96 h-96 bg-violet-600 rounded-full mix-blend-screen filter blur-[128px] opacity-20 animate-pulse"></div>
-           <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-indigo-600 rounded-full mix-blend-screen filter blur-[128px] opacity-20 animate-pulse delay-1000"></div>
-        </div>
-
-        <div className="glass-panel p-10 rounded-3xl shadow-2xl max-w-md w-full flex flex-col gap-8 items-center text-center border-t border-white/10 relative z-10">
-          <div className="relative">
-             <div className="absolute -inset-1 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-full blur opacity-75"></div>
-             <div className="relative bg-black p-4 rounded-full">
-                <Sparkles className="w-8 h-8 text-violet-400" />
-             </div>
+      <div className="min-h-screen neo-bg flex flex-col items-center justify-center p-6">
+        <div className="neo-card p-10 max-w-md w-full flex flex-col gap-8 items-center text-center relative">
+          
+          <div className="w-24 h-24 bg-[#FDE047] border-[3px] border-black rounded-full flex items-center justify-center shadow-[4px_4px_0px_0px_#000]">
+             <Sparkles className="w-10 h-10 text-black" />
           </div>
           
           <div className="space-y-2">
-             <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60">
-               Voice Sync
-             </h1>
-             <p className="text-white/60 text-lg">
-               High-fidelity, low-latency audio rooms for your squad.
+             <h1 className="text-5xl font-black text-black tracking-tight">VOICE<br/>SYNC</h1>
+             <p className="text-gray-600 text-lg font-medium border-2 border-black bg-white inline-block px-3 py-1 -rotate-2">
+               Simple. Raw. Fast.
              </p>
           </div>
 
           <div className="w-full space-y-4">
-             <Button onClick={handleLogin} variant="glow" fullWidth>
-                <Globe className="w-5 h-5" />
-                Continue with Google
+             <Button onClick={handleLogin} variant="primary" fullWidth className="text-lg h-14">
+                <Globe className="w-6 h-6" />
+                CONNECT WITH GOOGLE
              </Button>
           </div>
           
           {joinId && (
-            <div className="text-sm bg-violet-500/20 text-violet-200 px-4 py-2 rounded-full border border-violet-500/30">
-                🚀 Invite pending... login to join
+            <div className="bg-[#86efac] text-black font-bold border-2 border-black px-4 py-2 rounded-lg flex items-center gap-2 shadow-[2px_2px_0px_0px_#000]">
+                <Zap className="w-5 h-5 fill-black" /> INVITE DETECTED
             </div>
           )}
         </div>
@@ -181,30 +167,28 @@ const App: React.FC = () => {
   // --- PERMISSION SCREEN ---
   if (!myStream) {
     return (
-      <div className="min-h-screen mesh-bg flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
-         {/* Dynamic Pulse based on simulated volume for effect */}
-         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-             <div className="w-[500px] h-[500px] bg-violet-600/20 rounded-full blur-[100px] animate-pulse"></div>
-         </div>
-
-         <div className="glass-panel max-w-lg w-full p-10 rounded-3xl border border-white/10 flex flex-col gap-6 items-center animate-in zoom-in duration-300 relative z-10">
-           <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-2">
-             <Mic className="w-10 h-10 text-violet-400" />
+      <div className="min-h-screen neo-bg flex flex-col items-center justify-center p-6 text-center">
+         <div className="neo-card max-w-lg w-full p-12 flex flex-col gap-8 items-center relative">
+           
+           <div className="w-24 h-24 bg-[#FCA5A5] border-[3px] border-black rounded-full flex items-center justify-center shadow-[4px_4px_0px_0px_#000]">
+             <Mic className="w-10 h-10 text-black" />
            </div>
            
-           <h2 className="text-3xl font-bold text-white">Microphone Access</h2>
-           <p className="text-white/60 text-lg leading-relaxed">
-             To provide spatial audio and noise cancellation, we need access to your microphone.
-           </p>
+           <div className="space-y-4">
+               <h2 className="text-4xl font-black text-black uppercase">Mic Check</h2>
+               <p className="text-black/70 text-lg font-medium">
+                 We need your microphone to transmit audio. No creepy stuff, we promise.
+               </p>
+           </div>
            
            {error && (
-             <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-4 rounded-xl w-full">
+             <div className="bg-red-100 border-2 border-red-500 text-red-600 p-4 rounded-xl w-full font-bold">
                 ⚠️ {error}
              </div>
            )}
            
-           <Button onClick={enableVoice} variant="primary" fullWidth className="mt-4 py-6 text-lg">
-             Allow Access
+           <Button onClick={enableVoice} variant="glow" fullWidth className="h-16 text-xl">
+             ENABLE MICROPHONE
            </Button>
         </div>
       </div>
@@ -213,88 +197,53 @@ const App: React.FC = () => {
 
   // --- DASHBOARD ---
   return (
-    <div className="min-h-screen mesh-bg text-white flex flex-col overflow-hidden relative">
-      
-      {/* --- DYNAMIC VOICE GRADIENT --- */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
-          <div 
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 blur-[150px] transition-all duration-75 ease-out"
-            style={{ 
-                width: `${300 + (myVolume * 1000)}px`, 
-                height: `${300 + (myVolume * 1000)}px`,
-                opacity: 0.1 + (myVolume * 0.4) 
-            }}
-          />
-          {/* Secondary reactive orb */}
-          <div 
-            className="absolute top-1/3 left-1/3 rounded-full bg-cyan-500 blur-[100px] transition-all duration-300 ease-out mix-blend-overlay"
-            style={{ 
-                width: `${200 + (myVolume * 500)}px`, 
-                height: `${200 + (myVolume * 500)}px`,
-                opacity: 0.1 + (myVolume * 0.3) 
-            }}
-          />
-      </div>
+    <div className="min-h-screen neo-bg text-black flex flex-col overflow-hidden">
 
       {/* Navbar */}
-      <nav className="h-20 px-6 md:px-12 flex items-center justify-between border-b border-white/5 bg-black/20 backdrop-blur-md sticky top-0 z-50">
+      <nav className="h-20 px-6 md:px-12 flex items-center justify-between border-b-[3px] border-black bg-white sticky top-0 z-50">
         <div className="flex items-center gap-4">
-           <div className="relative">
-              <div className={`w-3 h-3 rounded-full ${isSignalConnected ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-red-500 animate-pulse'}`}></div>
-              {isSignalConnected && <div className="absolute inset-0 rounded-full bg-emerald-500 animate-ping opacity-75"></div>}
-           </div>
-           <span className="font-bold text-xl tracking-tight">Voice Sync</span>
+           <div className={`w-4 h-4 rounded-full border-2 border-black ${isSignalConnected ? 'bg-[#4ade80]' : 'bg-red-500 animate-pulse'}`}></div>
+           <span className="font-black text-2xl tracking-tighter">VOICE_SYNC</span>
         </div>
 
         <div className="flex items-center gap-4">
-           <div className="hidden md:flex items-center gap-3 px-4 py-2 rounded-full bg-white/5 border border-white/10">
-              <img src={user.photoURL || ''} alt="User" className="w-6 h-6 rounded-full" />
-              <span className="text-sm font-medium opacity-80">{user.displayName}</span>
+           <div className="hidden md:flex items-center gap-3 pl-2 pr-4 py-2 bg-[#f3f4f6] border-2 border-black rounded-lg">
+              <img src={user.photoURL || ''} alt="User" className="w-8 h-8 rounded border-2 border-black bg-white" />
+              <span className="text-sm font-bold">{user.displayName}</span>
            </div>
-           <Button variant="ghost" onClick={() => signOut(auth)} className="!p-3 rounded-full">
-             <LogOut className="w-5 h-5" />
+           <Button variant="danger" onClick={() => signOut(auth)} className="!h-10 !w-10 !p-0 !rounded-lg flex items-center justify-center">
+             <LogOut className="w-5 h-5 ml-0.5" />
            </Button>
         </div>
       </nav>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10">
+      <main className="flex-1 overflow-y-auto p-4 md:p-8 max-w-[1400px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
         
         {/* LEFT COLUMN: Controls & My Status */}
         <div className="lg:col-span-4 flex flex-col gap-6">
            {/* My Card */}
-           <div className="glass-panel rounded-3xl p-6 relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              
+           <div className="neo-card p-6 flex flex-col gap-6">
               <div className="flex flex-col items-center gap-4">
                  <div className="relative">
-                    <div className="w-24 h-24 rounded-3xl overflow-hidden border-2 border-white/10 shadow-2xl relative z-10">
+                    <div className="w-32 h-32 border-[3px] border-black rounded-2xl overflow-hidden bg-white shadow-[4px_4px_0px_0px_#000]">
                         <img src={user.photoURL || ''} alt="Me" className="w-full h-full object-cover" />
                     </div>
-                    {/* Ring Visualizer for Self */}
-                    <div 
-                        className="absolute inset-0 rounded-3xl border-2 border-violet-500 transition-all duration-75 ease-out"
-                        style={{ 
-                            transform: `scale(${1 + myVolume * 0.3})`, 
-                            opacity: myVolume > 0.01 ? 1 : 0 
-                        }}
-                    ></div>
-                    <div 
-                        className="absolute inset-0 rounded-3xl bg-violet-500 blur-xl transition-all duration-75 ease-out"
-                        style={{ 
-                            transform: `scale(${1 + myVolume * 0.5})`, 
-                            opacity: myVolume > 0.01 ? 0.6 : 0 
-                        }}
-                    ></div>
+                    {/* Status Badge */}
+                    <div className="absolute -bottom-3 -right-3 bg-[#C4B5FD] border-2 border-black px-2 py-1 text-xs font-bold rounded-md shadow-[2px_2px_0px_0px_#000]">
+                        YOU
+                    </div>
                  </div>
                  
-                 <div className="text-center">
-                    <h2 className="text-xl font-bold">{user.displayName}</h2>
-                    <p className="text-white/40 text-sm font-mono mt-1">ID: {myId?.substring(0,8)}</p>
+                 <div className="text-center w-full">
+                    <h2 className="text-2xl font-black uppercase">{user.displayName}</h2>
+                    <div className="inline-block bg-black text-white px-2 py-0.5 text-xs font-mono mt-1 rounded">
+                        ID: {myId?.substring(0,8)}
+                    </div>
                  </div>
 
-                 <div className="w-full mt-2">
-                    <div className="flex justify-between text-xs text-white/40 uppercase font-semibold mb-2">
-                        <span>Mic Level</span>
+                 <div className="w-full bg-[#f3f4f6] border-2 border-black rounded-lg p-4 mt-2">
+                    <div className="flex justify-between text-xs font-bold uppercase mb-2">
+                        <span>Mic Gain</span>
                         <span>{Math.round(myVolume * 100)}%</span>
                     </div>
                     <VolumeVisualizer volume={myVolume} isActive={true} bars={20} />
@@ -303,45 +252,43 @@ const App: React.FC = () => {
            </div>
 
            {/* Invite Section */}
-           <div className="glass-panel rounded-3xl p-6 flex flex-col gap-4">
-              <div className="flex items-center gap-2 text-violet-300 mb-2">
-                  <Share2 className="w-5 h-5" />
-                  <h3 className="font-semibold">Invite Friends</h3>
+           <div className="neo-card p-6 flex flex-col gap-4 bg-[#FFFBEB]">
+              <div className="flex items-center gap-3 border-b-2 border-black pb-3">
+                  <div className="p-1.5 bg-black text-white rounded">
+                    <Share2 className="w-5 h-5" />
+                  </div>
+                  <h3 className="font-bold text-lg uppercase">Invite Squad</h3>
               </div>
               
               {myId ? (
-                <div className="bg-black/30 p-1 rounded-xl flex items-center border border-white/5 pl-4 pr-1 py-1">
-                   <div className="flex-1 truncate text-white/50 text-sm font-mono">
-                      {inviteLink.replace(/^https?:\/\//, '')}
-                   </div>
-                   <div className="flex gap-1">
-                     <Button variant="ghost" onClick={copyLink} className="!h-9 !px-3 rounded-lg hover:bg-white/10">
-                         {copied ? <ShieldCheck className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                <div className="flex gap-2">
+                    <div className="flex-1 bg-white border-2 border-black rounded-lg p-2 font-mono text-sm truncate flex items-center px-3">
+                        {inviteLink.replace(/^https?:\/\//, '')}
+                    </div>
+                     <Button variant="secondary" onClick={copyLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
+                         {copied ? <ShieldCheck className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5" />}
                      </Button>
-                     <Button variant="primary" onClick={shareLink} className="!h-9 !px-3 rounded-lg">
-                         <Activity className="w-4 h-4" />
+                     <Button variant="primary" onClick={shareLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
+                         <Activity className="w-5 h-5" />
                      </Button>
-                   </div>
                 </div>
               ) : (
-                <div className="h-12 w-full bg-white/5 animate-pulse rounded-xl"></div>
+                <div className="h-10 w-full bg-gray-200 animate-pulse rounded-lg border-2 border-gray-300"></div>
               )}
               
-              <div className="h-px bg-white/10 my-1"></div>
-              
-              <div className="flex gap-2">
+              <div className="flex gap-2 pt-2">
                  <input 
-                    placeholder="Or enter Friend ID..."
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 text-white placeholder-white/20 focus:outline-none focus:border-violet-500 transition-colors"
+                    placeholder="Enter Friend ID..."
+                    className="neo-input flex-1 px-4 py-2"
                     onKeyDown={(e) => {
                        if (e.key === 'Enter') connectToFriend((e.target as HTMLInputElement).value);
                     }}
                  />
-                 <Button variant="secondary" onClick={(e) => {
+                 <Button variant="glow" className="!h-auto !px-4 !rounded-lg !border-2" onClick={(e) => {
                       const input = (e.target as HTMLElement).previousElementSibling as HTMLInputElement;
                       connectToFriend(input.value);
                  }}>
-                    Join
+                    JOIN
                  </Button>
               </div>
            </div>
@@ -350,26 +297,27 @@ const App: React.FC = () => {
         {/* RIGHT COLUMN: Participants */}
         <div className="lg:col-span-8 flex flex-col gap-6">
            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold flex items-center gap-3">
-                 <Users className="w-6 h-6 text-violet-400" /> 
-                 Room Members
-                 <span className="bg-white/10 text-sm px-2 py-0.5 rounded-full text-white/60">{connections.length}</span>
+              <h2 className="text-3xl font-black flex items-center gap-3">
+                 <span className="w-10 h-10 bg-[#A7F3D0] border-2 border-black flex items-center justify-center rounded-lg shadow-[3px_3px_0px_0px_#000]">
+                    <Users className="w-6 h-6 text-black" /> 
+                 </span>
+                 ROOM
+                 <span className="ml-2 text-sm bg-black text-white px-3 py-1 rounded-full font-bold">{connections.length} ONLINE</span>
               </h2>
            </div>
 
            {connections.length === 0 ? (
-             <div className="flex-1 min-h-[400px] glass-panel rounded-3xl border-dashed border-2 border-white/10 flex flex-col items-center justify-center text-center gap-6 p-8">
-                <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center animate-pulse">
-                   <LinkIcon className="w-10 h-10 text-white/20" />
+             <div className="flex-1 min-h-[400px] neo-card border-dashed flex flex-col items-center justify-center text-center gap-6 p-12 bg-gray-50">
+                <div className="w-24 h-24 rounded-full bg-white border-[3px] border-black flex items-center justify-center relative shadow-[6px_6px_0px_0px_#000]">
+                   <Radio className="w-10 h-10 text-black/50" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-medium text-white/80">Room is empty</h3>
-                  <p className="text-white/40 mt-2 max-w-xs mx-auto">Share your invite link to start a voice session with your friends.</p>
+                  <h3 className="text-2xl font-black uppercase mb-1">Silence...</h3>
+                  <p className="font-medium text-gray-500 max-w-sm mx-auto">The room is empty. Send invite link to your friends to start yapping.</p>
                 </div>
-                <Button variant="primary" onClick={shareLink}>Invite Others</Button>
              </div>
            ) : (
-             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 auto-rows-max">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-max">
                {connections.map(conn => (
                  <ParticipantCard key={conn.peerId} connection={conn} onDisconnect={disconnectFromFriend} />
                ))}
@@ -381,9 +329,9 @@ const App: React.FC = () => {
 
       {/* Floating Error Toast */}
       {error && (
-         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-full shadow-2xl z-50 animate-bounce flex items-center gap-3">
-            <span className="bg-white/20 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold">!</span>
-            {error}
+         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-[#FECACA] border-[3px] border-black text-black px-6 py-4 rounded-xl shadow-[8px_8px_0px_0px_#000] z-50 animate-bounce flex items-center gap-4">
+            <span className="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold border border-black">!</span>
+            <span className="font-bold">{error}</span>
          </div>
       )}
     </div>
@@ -397,43 +345,43 @@ const ParticipantCard: React.FC<{ connection: any, onDisconnect: (id: string) =>
   const isSpeaking = vol > 0.05;
 
   return (
-    <div className={`glass-panel p-5 rounded-2xl transition-all duration-300 group hover:bg-white/10 ${isSpeaking ? 'border-violet-500/50 shadow-[0_0_30px_rgba(139,92,246,0.1)]' : 'border-white/10'}`}>
+    <div className={`neo-card p-6 transition-all duration-300 relative group ${isSpeaking ? 'bg-[#F0FDFA]' : ''}`}>
        <StreamAudio stream={connection.stream} />
        
+       {isSpeaking && (
+           <div className="absolute top-2 right-2 bg-[#34D399] border-2 border-black px-2 py-0.5 text-[10px] font-bold uppercase rounded shadow-[2px_2px_0px_0px_#000]">
+               Speaking
+           </div>
+       )}
+
        <div className="flex items-start justify-between mb-4">
           <div className="relative">
-             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 border border-white/10 flex items-center justify-center overflow-hidden">
-                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${connection.peerId}&backgroundColor=1e293b`} alt="Avatar" className="w-full h-full" />
+             <div className="w-16 h-16 rounded-lg bg-gray-200 border-2 border-black overflow-hidden">
+                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${connection.peerId}&backgroundColor=fbbf24`} alt="Avatar" className="w-full h-full" />
              </div>
-             {/* Remote user speaking indicator */}
-             <div 
-                className="absolute inset-0 rounded-xl border-2 border-green-500 transition-all duration-75"
-                style={{ 
-                   transform: `scale(${1 + vol * 0.4})`, 
-                   opacity: vol > 0.05 ? 1 : 0 
-                }}
-             />
           </div>
           
           <button 
              onClick={() => onDisconnect(connection.peerId)}
-             className="text-white/20 hover:text-red-400 transition-colors p-1"
-             title="Disconnect"
+             className="bg-white border-2 border-black text-black hover:bg-[#FCA5A5] transition-colors p-2 rounded-lg shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+             title="Kick"
           >
-             <LogOut className="w-4 h-4" />
+             <LogOut className="w-5 h-5" />
           </button>
        </div>
 
-       <div className="mb-3">
-          <h4 className="font-bold text-lg truncate" title={connection.peerId}>
-            {connection.peerId.substring(0, 12)}...
+       <div className="mb-4">
+          <h4 className="font-black text-xl truncate uppercase" title={connection.peerId}>
+            {connection.peerId.substring(0, 12)}
           </h4>
-          <span className={`text-xs font-medium uppercase tracking-wider ${isSpeaking ? 'text-green-400' : 'text-white/30'}`}>
-             {isSpeaking ? 'Speaking...' : 'Silent'}
+          <span className="text-xs font-bold bg-black text-white px-2 py-0.5 rounded">
+             REMOTE USER
           </span>
        </div>
 
-       <VolumeVisualizer volume={vol} isActive={true} bars={12} />
+       <div className="bg-white border-2 border-black rounded-lg p-2">
+         <VolumeVisualizer volume={vol} isActive={true} bars={18} />
+       </div>
     </div>
   );
 };
