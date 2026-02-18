@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { database } from '../services/firebase';
 import { ref, onValue, push, serverTimestamp, query, limitToLast } from 'firebase/database';
@@ -72,9 +73,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId, userDisplayName,
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l-[3px] border-black shadow-[-8px_0px_0px_0px_rgba(0,0,0,0.2)] z-[60] flex flex-col transition-transform duration-300 transform">
+    <div className="fixed inset-0 md:inset-y-0 md:right-0 md:w-96 bg-white border-l-[3px] border-black shadow-[-8px_0px_0px_0px_rgba(0,0,0,0.2)] z-[60] flex flex-col transition-transform duration-300 transform">
       {/* Header */}
-      <div className="bg-[#FDE047] p-4 border-b-[3px] border-black flex justify-between items-center">
+      <div className="bg-[#FDE047] p-4 border-b-[3px] border-black flex justify-between items-center shrink-0">
         <div className="flex items-center gap-2">
             <MessageSquare className="w-6 h-6 text-black" />
             <h2 className="text-xl font-black uppercase tracking-tight">Squad Chat</h2>
@@ -109,13 +110,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId, userDisplayName,
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSendMessage} className="p-4 border-t-[3px] border-black bg-white flex gap-2">
+      <form onSubmit={handleSendMessage} className="p-4 border-t-[3px] border-black bg-white flex gap-2 shrink-0 pb-safe">
         <input
           type="text"
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           placeholder="Type something..."
-          className="flex-1 border-[3px] border-black rounded-lg px-4 py-2 font-bold focus:outline-none focus:translate-x-[-2px] focus:translate-y-[-2px] focus:shadow-[4px_4px_0px_0px_#000] transition-all placeholder:font-normal"
+          className="flex-1 border-[3px] border-black rounded-lg px-4 py-3 md:py-2 font-bold focus:outline-none focus:translate-x-[-2px] focus:translate-y-[-2px] focus:shadow-[4px_4px_0px_0px_#000] transition-all placeholder:font-normal"
         />
         <button 
             type="submit" 
