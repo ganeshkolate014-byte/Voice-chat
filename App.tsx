@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWebRTC } from './hooks/useWebRTC';
-import { Button } from './components/Button';
 import { StreamAudio } from './components/StreamAudio';
 import { StreamVideo } from './components/StreamVideo';
-import { Mic, MicOff, Users, Copy, Link as LinkIcon, LogOut, ShieldCheck, Share2, Sparkles, Activity, Globe, Zap, Radio, PhoneOff, MessageSquare, Monitor, MonitorOff, ArrowLeft, User as UserIcon } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Monitor, MonitorOff, Settings, Headphones, MessageSquare } from 'lucide-react';
 import { VolumeVisualizer } from './components/VolumeVisualizer';
 import { ChatWindow } from './components/ChatWindow';
 import { Lobby } from './components/Lobby';
@@ -56,22 +55,19 @@ const App: React.FC = () => {
   const [displayName, setDisplayName] = useState<string>('');
   const [isNameSet, setIsNameSet] = useState(false);
   const { myId, myStream, connections, error, enableVoice, connectToFriend, disconnectFromFriend, isSignalConnected, isMuted, toggleMic, endAllCalls, toggleScreenShare, screenStream } = useWebRTC();
-  const [copied, setCopied] = useState(false);
-  const [joinId, setJoinId] = useState('');
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const myVolume = useAudioLevel(myStream);
   const [activeRoomId, setActiveRoomId] = useState<string>('');
+  const [isChatOpen, setIsChatOpen] = useState(true); // Default open in Discord layout
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const joinParam = params.get('join');
-    if (joinParam) setJoinId(joinParam);
     
     // Check local storage for name
     const storedName = localStorage.getItem('voice_sync_name');
     if (storedName) {
         setDisplayName(storedName);
         setIsNameSet(true);
+        if (joinParam) setActiveRoomId(joinParam);
     }
   }, []);
 
@@ -81,7 +77,7 @@ const App: React.FC = () => {
       // Join the room in Realtime DB
       RoomService.joinRoom(activeRoomId, myId, {
         displayName: displayName || 'Anon',
-        photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=fbbf24`
+        photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=5865F2`
       });
 
       // Subscribe to participants
@@ -105,84 +101,45 @@ const App: React.FC = () => {
     if (displayName.trim()) {
         localStorage.setItem('voice_sync_name', displayName);
         setIsNameSet(true);
-    }
-  };
-
-  const handleLogout = () => {
-      localStorage.removeItem('voice_sync_name');
-      setIsNameSet(false);
-      setDisplayName('');
-      if (activeRoomId) handleLeaveRoom();
-  };
-
-  const copyLink = () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('join', activeRoomId);
-    navigator.clipboard.writeText(url.toString());
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-  
-  const shareLink = async () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('join', activeRoomId);
-    if (navigator.share) {
-        try {
-            await navigator.share({
-                title: 'Voice Chat Invite',
-                text: 'Join my voice room',
-                url: url.toString()
-            });
-        } catch (e) { console.log("Share cancelled"); }
-    } else {
-        copyLink();
+        const params = new URLSearchParams(window.location.search);
+        const joinParam = params.get('join');
+        if (joinParam) setActiveRoomId(joinParam);
     }
   };
 
   const handleLeaveRoom = () => {
     endAllCalls();
     setActiveRoomId('');
-    setIsChatOpen(false);
   };
 
   // --- NAME ENTRY SCREEN ---
   if (!isNameSet) {
     return (
-      <div className="min-h-screen neo-bg flex flex-col items-center justify-center p-6">
-        <div className="neo-card p-10 max-w-md w-full flex flex-col gap-8 items-center text-center relative">
-          <div className="w-24 h-24 bg-[#FDE047] border-[3px] border-black rounded-full flex items-center justify-center shadow-[4px_4px_0px_0px_#000]">
-             <Sparkles className="w-10 h-10 text-black" />
+      <div className="min-h-screen bg-[#313338] flex items-center justify-center p-6 text-[#DBDEE1]">
+        <div className="bg-[#313338] p-8 rounded-md shadow-lg max-w-md w-full flex flex-col gap-6 items-center text-center">
+          <div className="w-24 h-24 bg-[#5865F2] rounded-full flex items-center justify-center mb-2">
+             <Headphones className="w-12 h-12 text-white" />
           </div>
           <div className="space-y-2">
-             <h1 className="text-5xl font-black text-black tracking-tight">VOICE<br/>SYNC</h1>
-             <p className="text-gray-600 text-lg font-medium border-2 border-black bg-white inline-block px-3 py-1 -rotate-2">
-               Simple. Raw. Fast.
-             </p>
+             <h1 className="text-2xl font-bold text-white">Welcome back!</h1>
+             <p className="text-[#949BA4]">We're so excited to see you again!</p>
           </div>
           
-          <form onSubmit={handleSetName} className="w-full space-y-4">
-             <div className="text-left">
-                <label className="font-bold text-sm uppercase mb-1 block">Enter your nickname</label>
+          <form onSubmit={handleSetName} className="w-full space-y-4 text-left">
+             <div>
+                <label className="text-xs font-bold uppercase text-[#B5BAC1] mb-2 block">Display Name</label>
                 <input 
                     type="text" 
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="neo-input w-full px-4 py-3 text-lg"
-                    placeholder="e.g. Captain Cool"
+                    className="w-full bg-[#1E1F22] text-[#DBDEE1] p-2.5 rounded outline-none focus:ring-2 focus:ring-[#00A8FC]"
                     autoFocus
                 />
              </div>
-             <Button type="submit" variant="primary" fullWidth className="text-lg h-14" disabled={!displayName.trim()}>
-                <Globe className="w-6 h-6" />
-                ENTER LOBBY
-             </Button>
+             <button type="submit" className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white font-medium py-2.5 rounded transition-colors" disabled={!displayName.trim()}>
+                Continue
+             </button>
           </form>
-
-          {joinId && (
-            <div className="bg-[#86efac] text-black font-bold border-2 border-black px-4 py-2 rounded-lg flex items-center gap-2 shadow-[2px_2px_0px_0px_#000]">
-                <Zap className="w-5 h-5 fill-black" /> INVITE DETECTED
-            </div>
-          )}
         </div>
       </div>
     );
@@ -191,238 +148,174 @@ const App: React.FC = () => {
   // --- PERMISSION SCREEN ---
   if (!myStream) {
     return (
-      <div className="min-h-screen neo-bg flex flex-col items-center justify-center p-6 text-center">
-         <div className="neo-card max-w-lg w-full p-12 flex flex-col gap-8 items-center relative">
-           <div className="w-24 h-24 bg-[#FCA5A5] border-[3px] border-black rounded-full flex items-center justify-center shadow-[4px_4px_0px_0px_#000]">
-             <Mic className="w-10 h-10 text-black" />
+      <div className="min-h-screen bg-[#313338] flex items-center justify-center p-6 text-[#DBDEE1]">
+         <div className="bg-[#313338] p-8 rounded-md shadow-lg max-w-lg w-full flex flex-col gap-6 items-center text-center">
+           <div className="w-20 h-20 bg-[#5865F2] rounded-full flex items-center justify-center">
+             <Mic className="w-10 h-10 text-white" />
            </div>
-           <div className="space-y-4">
-               <h2 className="text-4xl font-black text-black uppercase">Mic Check</h2>
-               <p className="text-black/70 text-lg font-medium">
-                 We need your microphone to transmit audio.
+           <div className="space-y-2">
+               <h2 className="text-2xl font-bold text-white">Microphone Access</h2>
+               <p className="text-[#949BA4]">
+                 We need access to your microphone to connect you to voice channels.
                </p>
            </div>
            {error && (
-             <div className="bg-red-100 border-2 border-red-500 text-red-600 p-4 rounded-xl w-full font-bold">
-                ⚠️ {error}
+             <div className="bg-[#DA373C] text-white p-3 rounded w-full text-sm font-medium">
+                {error}
              </div>
            )}
-           <Button onClick={enableVoice} variant="glow" fullWidth className="h-16 text-xl">
-             ENABLE MICROPHONE
-           </Button>
+           <button onClick={enableVoice} className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white font-medium py-3 rounded transition-colors text-lg">
+             Enable Microphone
+           </button>
         </div>
       </div>
     );
   }
 
-  // --- LOBBY (Not in a room) ---
-  if (!activeRoomId) {
-    return (
-      <div className="min-h-screen neo-bg text-black flex flex-col overflow-hidden relative">
-        <nav className="h-20 px-6 md:px-12 flex items-center justify-between border-b-[3px] border-black bg-white sticky top-0 z-40">
-          <div className="flex items-center gap-4">
-             <div className={`w-4 h-4 rounded-full border-2 border-black ${isSignalConnected ? 'bg-[#4ade80]' : 'bg-red-500 animate-pulse'}`}></div>
-             <span className="font-black text-2xl tracking-tighter hidden md:block">VOICE_SYNC</span>
-             <span className="font-black text-xl tracking-tighter md:hidden">SYNC</span>
-          </div>
-          <div className="flex items-center gap-4">
-             <div className="hidden md:flex items-center gap-3 pl-2 pr-4 py-2 bg-[#f3f4f6] border-2 border-black rounded-lg">
-                <div className="w-8 h-8 rounded border-2 border-black bg-white overflow-hidden">
-                    <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=fbbf24`} alt="Avatar" />
-                </div>
-                <span className="text-sm font-bold">{displayName}</span>
-             </div>
-             <Button variant="danger" onClick={handleLogout} className="!h-10 !w-10 !p-0 !rounded-lg flex items-center justify-center" title="Change Name">
-               <LogOut className="w-5 h-5 ml-0.5" />
-             </Button>
-          </div>
-        </nav>
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 max-w-[1400px] mx-auto w-full">
-          <Lobby onJoinRoom={setActiveRoomId} userDisplayName={displayName} />
-        </main>
-      </div>
-    );
-  }
-
-  // --- ROOM DASHBOARD ---
+  // --- MAIN LAYOUT ---
   return (
-    <div className="min-h-screen neo-bg text-black flex flex-col overflow-hidden relative">
-
-      {/* Navbar */}
-      <nav className="h-20 px-6 md:px-12 flex items-center justify-between border-b-[3px] border-black bg-white sticky top-0 z-40">
-        <div className="flex items-center gap-4">
-           <Button variant="secondary" onClick={handleLeaveRoom} className="!h-10 !w-10 !p-0 !rounded-lg !border-2 flex items-center justify-center mr-2">
-              <ArrowLeft className="w-5 h-5" />
-           </Button>
-           <div className={`w-4 h-4 rounded-full border-2 border-black ${isSignalConnected ? 'bg-[#4ade80]' : 'bg-red-500 animate-pulse'}`}></div>
-           <span className="font-black text-2xl tracking-tighter hidden md:block">VOICE_SYNC</span>
-           <span className="font-black text-xl tracking-tighter md:hidden">SYNC</span>
-        </div>
-
-        <div className="flex items-center gap-4">
-           <div className="hidden md:flex items-center gap-3 pl-2 pr-4 py-2 bg-[#f3f4f6] border-2 border-black rounded-lg">
-              <div className="w-8 h-8 rounded border-2 border-black bg-white overflow-hidden">
-                  <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=fbbf24`} alt="Avatar" />
-              </div>
-              <span className="text-sm font-bold">{displayName}</span>
-           </div>
-           <Button variant="danger" onClick={handleLogout} className="!h-10 !w-10 !p-0 !rounded-lg flex items-center justify-center" title="Change Name">
-             <LogOut className="w-5 h-5 ml-0.5" />
-           </Button>
-        </div>
-      </nav>
-
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 max-w-[1400px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 pb-32">
-        
-        {/* LEFT COLUMN: Controls & My Status */}
-        <div className="lg:col-span-4 flex flex-col gap-6">
-           {/* My Card */}
-           <div className="neo-card p-6 flex flex-col gap-6 bg-white relative">
-              <div className="flex flex-col items-center gap-4">
-                 <div className="relative">
-                    <div className="w-32 h-32 border-[3px] border-black rounded-2xl overflow-hidden bg-white shadow-[4px_4px_0px_0px_#000]">
-                        <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=fbbf24`} alt="Me" className="w-full h-full object-cover" />
-                    </div>
-                    {/* Status Badge */}
-                    <div className="absolute -bottom-3 -right-3 bg-[#C4B5FD] border-2 border-black px-2 py-1 text-xs font-bold rounded-md shadow-[2px_2px_0px_0px_#000]">
-                        YOU
-                    </div>
-                    {isMuted && (
-                        <div className="absolute top-2 left-2 bg-red-500 border-2 border-black text-white p-1 rounded">
-                            <MicOff className="w-4 h-4" />
-                        </div>
-                    )}
-                 </div>
-                 
-                 <div className="text-center w-full">
-                    <h2 className="text-2xl font-black uppercase">{displayName}</h2>
-                    <div className="inline-block bg-black text-white px-2 py-0.5 text-xs font-mono mt-1 rounded">
-                        ID: {myId?.substring(0,8)}
-                    </div>
-                 </div>
-
-                 {screenStream && (
-                    <div className="w-full aspect-video bg-black rounded-lg overflow-hidden border-2 border-black mt-2 relative group">
-                        <StreamVideo stream={screenStream} />
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                            <span className="text-white font-bold uppercase text-sm">You are sharing screen</span>
-                        </div>
-                    </div>
-                  )}
-
-                 <div className="w-full bg-[#f3f4f6] border-2 border-black rounded-lg p-4 mt-2">
-                    <div className="flex justify-between text-xs font-bold uppercase mb-2">
-                        <span>Mic Gain</span>
-                        <span>{isMuted ? 'MUTED' : `${Math.round(myVolume * 100)}%`}</span>
-                    </div>
-                    <VolumeVisualizer volume={myVolume} isActive={!isMuted} bars={20} />
-                 </div>
-              </div>
-           </div>
-
-           {/* Invite Section */}
-           <div className="neo-card p-6 flex flex-col gap-4 bg-[#FFFBEB]">
-              <div className="flex items-center gap-3 border-b-2 border-black pb-3">
-                  <div className="p-1.5 bg-black text-white rounded">
-                    <Share2 className="w-5 h-5" />
-                  </div>
-                  <h3 className="font-bold text-lg uppercase">Invite Squad</h3>
-              </div>
-              
-              <div className="flex gap-2">
-                  <div className="flex-1 bg-white border-2 border-black rounded-lg p-2 font-mono text-sm truncate flex items-center px-3">
-                      {window.location.origin}?join={activeRoomId}
-                  </div>
-                   <Button variant="secondary" onClick={copyLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
-                       {copied ? <ShieldCheck className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5" />}
-                   </Button>
-                   <Button variant="primary" onClick={shareLink} className="!h-10 !w-10 !p-0 !rounded-lg !border-2">
-                       <Activity className="w-5 h-5" />
-                   </Button>
-              </div>
-           </div>
-        </div>
-
-        {/* RIGHT COLUMN: Participants */}
-        <div className="lg:col-span-8 flex flex-col gap-6">
-           <div className="flex items-center justify-between">
-              <h2 className="text-3xl font-black flex items-center gap-3">
-                 <span className="w-10 h-10 bg-[#A7F3D0] border-2 border-black flex items-center justify-center rounded-lg shadow-[3px_3px_0px_0px_#000]">
-                    <Users className="w-6 h-6 text-black" /> 
-                 </span>
-                 ROOM
-                 <span className="ml-2 text-sm bg-black text-white px-3 py-1 rounded-full font-bold">{connections.length} ONLINE</span>
-              </h2>
-           </div>
-
-           {connections.length === 0 ? (
-             <div className="flex-1 min-h-[400px] neo-card border-dashed flex flex-col items-center justify-center text-center gap-6 p-12 bg-gray-50">
-                <div className="w-24 h-24 rounded-full bg-white border-[3px] border-black flex items-center justify-center relative shadow-[6px_6px_0px_0px_#000]">
-                   <Radio className="w-10 h-10 text-black/50" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-black uppercase mb-1">Silence...</h3>
-                  <p className="font-medium text-gray-500 max-w-sm mx-auto">The room is empty. Send invite link to your friends to start yapping.</p>
-                </div>
-             </div>
-           ) : (
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-max">
-               {connections.map(conn => (
-                 <ParticipantCard key={conn.peerId} connection={conn} onDisconnect={disconnectFromFriend} />
-               ))}
-             </div>
-           )}
-        </div>
-      </main>
-
-      {/* Floating Control Bar (Mute, Cut, Chat) */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white border-[3px] border-black p-2 rounded-2xl shadow-[6px_6px_0px_0px_#000] z-50 flex items-center gap-4">
-         <button 
-            onClick={toggleMic}
-            className={`w-14 h-14 rounded-xl border-2 border-black flex items-center justify-center transition-all active:scale-95 shadow-[3px_3px_0px_0px_#000] active:shadow-none active:translate-y-[3px] active:translate-x-[3px] ${isMuted ? 'bg-red-200' : 'bg-white hover:bg-gray-50'}`}
-            title={isMuted ? "Unmute" : "Mute"}
-         >
-            {isMuted ? <MicOff className="w-6 h-6 text-red-600" /> : <Mic className="w-6 h-6 text-black" />}
-         </button>
-
-         <button 
-             onClick={toggleScreenShare}
-             className={`w-14 h-14 rounded-xl border-2 border-black flex items-center justify-center transition-all active:scale-95 shadow-[3px_3px_0px_0px_#000] active:shadow-none active:translate-y-[3px] active:translate-x-[3px] ${screenStream ? 'bg-blue-200' : 'bg-white hover:bg-gray-50'}`}
-             title={screenStream ? "Stop Sharing" : "Share Screen"}
-          >
-             {screenStream ? <MonitorOff className="w-6 h-6 text-blue-600" /> : <Monitor className="w-6 h-6 text-black" />}
-          </button>
-
-         <button 
-            onClick={handleLeaveRoom}
-            className="w-16 h-16 rounded-xl border-2 border-black flex items-center justify-center bg-red-500 hover:bg-red-600 transition-all active:scale-95 shadow-[3px_3px_0px_0px_#000] active:shadow-none active:translate-y-[3px] active:translate-x-[3px]"
-            title="Leave Room"
-         >
-            <PhoneOff className="w-8 h-8 text-white fill-current" />
-         </button>
-
-         <button 
-            onClick={() => setIsChatOpen(!isChatOpen)}
-            className={`w-14 h-14 rounded-xl border-2 border-black flex items-center justify-center transition-all active:scale-95 shadow-[3px_3px_0px_0px_#000] active:shadow-none active:translate-y-[3px] active:translate-x-[3px] ${isChatOpen ? 'bg-[#FDE047]' : 'bg-white hover:bg-gray-50'}`}
-            title="Chat"
-         >
-            <MessageSquare className="w-6 h-6 text-black" />
-         </button>
+    <div className="flex h-screen bg-[#313338] overflow-hidden font-sans">
+      
+      {/* 1. SERVER RAIL (Leftmost) */}
+      <div className="w-[72px] bg-[#1E1F22] flex flex-col items-center py-3 gap-2 flex-shrink-0">
+         <div className="w-12 h-12 bg-[#5865F2] rounded-[16px] flex items-center justify-center text-white cursor-pointer hover:rounded-[12px] transition-all">
+            <img src="https://assets-global.website-files.com/6257adef93867e56f84d3092/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Home" className="w-7 h-7" />
+         </div>
+         <div className="w-8 h-[2px] bg-[#35363C] rounded-lg my-1"></div>
+         {/* Placeholder for other servers */}
+         <div className="w-12 h-12 bg-[#313338] rounded-[24px] flex items-center justify-center text-[#23A559] hover:bg-[#23A559] hover:text-white cursor-pointer hover:rounded-[16px] transition-all group">
+            <div className="font-medium text-2xl group-hover:text-white">+</div>
+         </div>
       </div>
 
-      {/* Chat Window Overlay */}
-      <ChatWindow 
-        isOpen={isChatOpen} 
-        onClose={() => setIsChatOpen(false)} 
-        roomId={activeRoomId} 
-        userDisplayName={displayName || 'Anon'} 
-      />
+      {/* 2. CHANNEL SIDEBAR (Left) */}
+      <div className="w-60 bg-[#2B2D31] flex flex-col flex-shrink-0">
+         {/* Room List */}
+         <Lobby 
+            onJoinRoom={setActiveRoomId} 
+            userDisplayName={displayName} 
+            activeRoomId={activeRoomId} 
+         />
+         
+         {/* User Bar (Bottom) */}
+         <div className="h-[52px] bg-[#232428] px-2 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-2 hover:bg-[#3F4147] p-1 rounded cursor-pointer min-w-0">
+               <div className="relative">
+                  <div className="w-8 h-8 rounded-full bg-[#5865F2] overflow-hidden">
+                     <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=5865F2`} alt="Me" />
+                  </div>
+                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#23A559] rounded-full border-[2px] border-[#232428]"></div>
+               </div>
+               <div className="min-w-0">
+                  <div className="text-xs font-bold text-white truncate max-w-[80px]">{displayName}</div>
+                  <div className="text-[10px] text-[#B5BAC1] truncate">#{myId?.substring(0,4)}</div>
+               </div>
+            </div>
+            <div className="flex items-center">
+               <button onClick={toggleMic} className="p-1.5 hover:bg-[#3F4147] rounded text-[#F2F3F5]">
+                  {isMuted ? <MicOff className="w-5 h-5 text-[#DA373C]" /> : <Mic className="w-5 h-5" />}
+               </button>
+               <button className="p-1.5 hover:bg-[#3F4147] rounded text-[#F2F3F5]">
+                  <Headphones className="w-5 h-5" />
+               </button>
+               <button className="p-1.5 hover:bg-[#3F4147] rounded text-[#F2F3F5]">
+                  <Settings className="w-5 h-5" />
+               </button>
+            </div>
+         </div>
+      </div>
 
-      {/* Floating Error Toast */}
-      {error && (
-         <div className="fixed top-8 left-1/2 -translate-x-1/2 bg-[#FECACA] border-[3px] border-black text-black px-6 py-4 rounded-xl shadow-[8px_8px_0px_0px_#000] z-[100] animate-bounce flex items-center gap-4">
-            <span className="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold border border-black">!</span>
-            <span className="font-bold">{error}</span>
+      {/* 3. MAIN CONTENT AREA (Center) */}
+      <div className="flex-1 flex flex-col min-w-0 bg-[#313338] relative">
+         {/* Top Bar */}
+         <div className="h-12 border-b border-[#26272D] flex items-center justify-between px-4 shadow-sm flex-shrink-0">
+            <div className="flex items-center gap-2 text-[#F2F3F5]">
+               <div className="font-bold text-base">
+                  {activeRoomId ? 'Voice Channel' : 'Friends'}
+               </div>
+               {activeRoomId && (
+                  <span className="text-xs font-medium text-[#23A559] bg-[#23A559]/10 px-1.5 py-0.5 rounded">Connected</span>
+               )}
+            </div>
+            <div className="flex items-center gap-4 text-[#B5BAC1]">
+               <button onClick={() => setIsChatOpen(!isChatOpen)} className={`hover:text-[#DBDEE1] ${isChatOpen ? 'text-[#F2F3F5]' : ''}`}>
+                  <MessageSquare className="w-6 h-6" />
+               </button>
+            </div>
+         </div>
+
+         {/* Stage / Grid */}
+         <div className="flex-1 p-4 overflow-y-auto flex flex-wrap content-start gap-4 justify-center">
+            {!activeRoomId ? (
+               <div className="flex flex-col items-center justify-center h-full text-center opacity-50">
+                  <div className="w-64 h-64 bg-[#2B2D31] rounded-full mb-6 flex items-center justify-center">
+                     <div className="text-6xl">👋</div>
+                  </div>
+                  <h2 className="text-xl font-bold text-white mb-2">No one's around to play with.</h2>
+                  <p className="text-[#949BA4]">Select a voice channel on the left to start talking.</p>
+               </div>
+            ) : (
+               <>
+                  {/* My Tile */}
+                  <div className="w-[300px] h-[200px] bg-black rounded-lg relative overflow-hidden group border border-[#202225] shadow-sm">
+                     {screenStream ? (
+                        <StreamVideo stream={screenStream} />
+                     ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-[#2B2D31]">
+                           <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${displayName}&backgroundColor=5865F2`} alt="Me" className="w-20 h-20 rounded-full opacity-50 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                     )}
+                     <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-0.5 rounded text-white text-sm font-medium flex items-center gap-2">
+                        {isMuted && <MicOff className="w-3 h-3 text-[#DA373C]" />}
+                        {displayName} (You)
+                     </div>
+                     {screenStream && (
+                        <div className="absolute top-2 right-2 bg-[#DA373C] text-white text-xs font-bold px-1.5 py-0.5 rounded uppercase">
+                           LIVE
+                        </div>
+                     )}
+                     <div className={`absolute inset-0 border-2 ${!isMuted && useAudioLevel(myStream) > 0.05 ? 'border-[#23A559]' : 'border-transparent'} rounded-lg pointer-events-none transition-colors`}></div>
+                  </div>
+
+                  {/* Remote Tiles */}
+                  {connections.map(conn => (
+                     <ParticipantCard key={conn.peerId} connection={conn} onDisconnect={disconnectFromFriend} />
+                  ))}
+               </>
+            )}
+         </div>
+
+         {/* Call Controls (Floating at bottom center of main area) */}
+         {activeRoomId && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#2B2D31] px-4 py-2 rounded-lg shadow-lg flex items-center gap-4 border border-[#1F2023]">
+               <button 
+                  onClick={toggleScreenShare}
+                  className={`p-3 rounded-full transition-colors ${screenStream ? 'bg-[#F2F3F5] text-black' : 'bg-[#313338] text-[#F2F3F5] hover:bg-[#404249]'}`}
+                  title="Share Screen"
+               >
+                  {screenStream ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+               </button>
+               
+               <button 
+                  onClick={handleLeaveRoom}
+                  className="p-3 rounded-full bg-[#DA373C] text-white hover:bg-[#A1282C] transition-colors"
+                  title="Disconnect"
+               >
+                  <PhoneOff className="w-5 h-5" />
+               </button>
+            </div>
+         )}
+      </div>
+
+      {/* 4. RIGHT SIDEBAR (Chat) */}
+      {isChatOpen && activeRoomId && (
+         <div className="w-[300px] flex-shrink-0 border-l border-[#26272D] bg-[#313338]">
+            <ChatWindow 
+               isOpen={true} 
+               onClose={() => setIsChatOpen(false)} 
+               roomId={activeRoomId} 
+               userDisplayName={displayName} 
+            />
          </div>
       )}
     </div>
@@ -436,49 +329,28 @@ const ParticipantCard: React.FC<{ connection: any, onDisconnect: (id: string) =>
   const isSpeaking = vol > 0.05;
 
   return (
-    <div className={`neo-card p-6 transition-all duration-300 relative group ${isSpeaking ? 'bg-[#F0FDFA]' : ''} ${connection.screenStream ? 'md:col-span-2' : ''}`}>
+    <div className={`w-[300px] h-[200px] bg-black rounded-lg relative overflow-hidden group border border-[#202225] shadow-sm ${connection.screenStream ? 'md:col-span-2 md:w-[600px] md:h-[400px]' : ''}`}>
        <StreamAudio stream={connection.stream} />
        
+       {connection.screenStream ? (
+          <StreamVideo stream={connection.screenStream} />
+       ) : (
+          <div className="w-full h-full flex items-center justify-center bg-[#2B2D31]">
+             <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${connection.peerId}&backgroundColor=5865F2`} alt="Avatar" className={`w-20 h-20 rounded-full transition-all ${isSpeaking ? 'ring-4 ring-[#23A559]' : 'opacity-50 group-hover:opacity-100'}`} />
+          </div>
+       )}
+
+       <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-0.5 rounded text-white text-sm font-medium flex items-center gap-2">
+          {connection.peerId.substring(0, 8)}
+       </div>
+
        {connection.screenStream && (
-         <div className="mb-4 w-full aspect-video bg-black rounded-lg overflow-hidden border-2 border-black shadow-[2px_2px_0px_0px_#000]">
-            <StreamVideo stream={connection.screenStream} />
-         </div>
+          <div className="absolute top-2 right-2 bg-[#DA373C] text-white text-xs font-bold px-1.5 py-0.5 rounded uppercase">
+             LIVE
+          </div>
        )}
        
-       {isSpeaking && (
-           <div className="absolute top-2 right-2 bg-[#34D399] border-2 border-black px-2 py-0.5 text-[10px] font-bold uppercase rounded shadow-[2px_2px_0px_0px_#000]">
-               Speaking
-           </div>
-       )}
-
-       <div className="flex items-start justify-between mb-4">
-          <div className="relative">
-             <div className="w-16 h-16 rounded-lg bg-gray-200 border-2 border-black overflow-hidden">
-                <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${connection.peerId}&backgroundColor=fbbf24`} alt="Avatar" className="w-full h-full" />
-             </div>
-          </div>
-          
-          <button 
-             onClick={() => onDisconnect(connection.peerId)}
-             className="bg-white border-2 border-black text-black hover:bg-[#FCA5A5] transition-colors p-2 rounded-lg shadow-[2px_2px_0px_0px_#000] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
-             title="Kick / Disconnect"
-          >
-             <LogOut className="w-5 h-5" />
-          </button>
-       </div>
-
-       <div className="mb-4">
-          <h4 className="font-black text-xl truncate uppercase" title={connection.peerId}>
-            {connection.peerId.substring(0, 12)}
-          </h4>
-          <span className="text-xs font-bold bg-black text-white px-2 py-0.5 rounded">
-             REMOTE USER
-          </span>
-       </div>
-
-       <div className="bg-white border-2 border-black rounded-lg p-2">
-         <VolumeVisualizer volume={vol} isActive={true} bars={18} />
-       </div>
+       <div className={`absolute inset-0 border-2 ${isSpeaking ? 'border-[#23A559]' : 'border-transparent'} rounded-lg pointer-events-none transition-colors`}></div>
     </div>
   );
 };

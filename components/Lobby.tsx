@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { db, database } from '../services/firebase';
+import { db } from '../services/firebase';
 import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
-import { ref, set, onDisconnect, remove } from 'firebase/database';
-import { Button } from './Button';
-import { Plus, Users, ArrowRight, Loader2 } from 'lucide-react';
+import { Plus, Hash, Volume2 } from 'lucide-react';
 
 interface Room {
   id: string;
@@ -15,13 +13,13 @@ interface Room {
 interface LobbyProps {
   onJoinRoom: (roomId: string) => void;
   userDisplayName: string;
-  userId: string;
+  activeRoomId: string;
 }
 
-export const Lobby: React.FC<LobbyProps> = ({ onJoinRoom, userDisplayName, userId }) => {
+export const Lobby: React.FC<LobbyProps> = ({ onJoinRoom, userDisplayName, activeRoomId }) => {
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'rooms'), orderBy('createdAt', 'desc'));
@@ -39,67 +37,80 @@ export const Lobby: React.FC<LobbyProps> = ({ onJoinRoom, userDisplayName, userI
     e.preventDefault();
     if (!newRoomName.trim()) return;
 
-    setLoading(true);
     try {
       const docRef = await addDoc(collection(db, 'rooms'), {
         name: newRoomName,
         createdBy: userDisplayName,
-        createdByUid: userId,
         createdAt: serverTimestamp()
       });
       setNewRoomName('');
+      setIsCreating(false);
       onJoinRoom(docRef.id);
     } catch (error) {
       console.error("Error creating room: ", error);
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full gap-6">
-      <div className="neo-card p-6 bg-white">
-        <h2 className="text-2xl font-black uppercase mb-4 flex items-center gap-2">
-          <Users className="w-6 h-6" /> Active Rooms
-        </h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto pr-2">
-          {rooms.map(room => (
-            <div key={room.id} className="border-2 border-black p-4 rounded-lg hover:bg-gray-50 transition-colors flex flex-col justify-between gap-4 shadow-[4px_4px_0px_0px_#000]">
-              <div>
-                <h3 className="font-bold text-lg truncate" title={room.name}>{room.name}</h3>
-                <p className="text-xs text-gray-500 font-mono">Host: {room.createdBy}</p>
-              </div>
-              <Button onClick={() => onJoinRoom(room.id)} variant="primary" fullWidth className="!h-10 text-sm">
-                JOIN ROOM <ArrowRight className="w-4 h-4 ml-1" />
-              </Button>
-            </div>
-          ))}
-          {rooms.length === 0 && (
-            <div className="col-span-full text-center py-8 text-gray-500 italic border-2 border-dashed border-gray-300 rounded-lg">
-              No active rooms found. Create one to start!
-            </div>
-          )}
-        </div>
+    <div className="flex flex-col h-full bg-[#2B2D31] text-[#949BA4]">
+      {/* Header */}
+      <div className="h-12 border-b border-[#1F2023] flex items-center px-4 shadow-sm bg-[#2B2D31]">
+        <h2 className="font-bold text-[#F2F3F5] truncate">Voice Hangout</h2>
       </div>
 
-      <div className="neo-card p-6 bg-[#FFFBEB]">
-        <h3 className="font-bold text-lg uppercase mb-2 flex items-center gap-2">
-          <Plus className="w-5 h-5" /> Create New Room
-        </h3>
-        <form onSubmit={handleCreateRoom} className="flex gap-2">
-          <input
-            type="text"
-            value={newRoomName}
-            onChange={(e) => setNewRoomName(e.target.value)}
-            placeholder="Enter room name..."
-            className="flex-1 border-2 border-black rounded-lg px-4 py-2 font-bold focus:outline-none focus:shadow-[4px_4px_0px_0px_#000] transition-all"
-            disabled={loading}
-          />
-          <Button type="submit" variant="glow" disabled={loading || !newRoomName.trim()} className="!w-auto px-6">
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'CREATE'}
-          </Button>
-        </form>
+      {/* Channel List */}
+      <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+        
+        {/* Category Header */}
+        <div className="flex items-center justify-between px-2 pt-4 pb-1 group">
+          <div className="flex items-center text-xs font-bold uppercase hover:text-[#DBDEE1] cursor-pointer transition-colors">
+            <span className="mr-0.5">v</span>
+            <span>Voice Channels</span>
+          </div>
+          <button 
+            onClick={() => setIsCreating(!isCreating)}
+            className="text-[#DBDEE1] hover:text-white cursor-pointer p-1 rounded hover:bg-[#3F4147]"
+            title="Create Channel"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Create Room Input */}
+        {isCreating && (
+          <form onSubmit={handleCreateRoom} className="px-2 mb-2">
+            <input
+              autoFocus
+              type="text"
+              value={newRoomName}
+              onChange={(e) => setNewRoomName(e.target.value)}
+              placeholder="new-channel"
+              className="w-full bg-[#1E1F22] text-[#DBDEE1] text-sm rounded px-2 py-1 outline-none border border-transparent focus:border-blue-500"
+              onBlur={() => !newRoomName && setIsCreating(false)}
+            />
+          </form>
+        )}
+
+        {/* Room List */}
+        {rooms.map(room => {
+          const isActive = activeRoomId === room.id;
+          return (
+            <div 
+              key={room.id}
+              onClick={() => onJoinRoom(room.id)}
+              className={`group flex items-center px-2 py-1.5 rounded mx-2 cursor-pointer transition-colors ${isActive ? 'bg-[#404249] text-white' : 'hover:bg-[#35373C] hover:text-[#DBDEE1]'}`}
+            >
+              <Volume2 className="w-5 h-5 mr-1.5 text-[#80848E] group-hover:text-[#DBDEE1]" />
+              <span className={`font-medium truncate ${isActive ? 'text-white' : ''}`}>{room.name}</span>
+            </div>
+          );
+        })}
+
+        {rooms.length === 0 && !isCreating && (
+          <div className="px-4 py-2 text-xs italic opacity-50">
+            No channels yet.
+          </div>
+        )}
       </div>
     </div>
   );

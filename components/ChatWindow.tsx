@@ -1,8 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { database } from '../services/firebase';
 import { ref, onValue, push, serverTimestamp, query, limitToLast } from 'firebase/database';
-import { Button } from './Button';
-import { Send, X, MessageSquare } from 'lucide-react';
+import { Send, X, Hash, MessageSquare } from 'lucide-react';
 
 interface ChatWindowProps {
   roomId: string;
@@ -22,7 +21,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId, userDisplayName,
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [isNewMessage, setIsNewMessage] = useState(false);
 
   useEffect(() => {
     if (!roomId) return;
@@ -37,23 +35,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId, userDisplayName,
           ...value,
         }));
         setMessages(messageList);
-        if (!isOpen) {
-            setIsNewMessage(true);
-        }
       } else {
         setMessages([]);
       }
     });
 
     return () => unsubscribe();
-  }, [roomId, isOpen]);
+  }, [roomId]);
 
   useEffect(() => {
-    if (isOpen) {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        setIsNewMessage(false);
-    }
-  }, [messages, isOpen]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,36 +64,47 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId, userDisplayName,
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-y-0 right-0 w-full md:w-96 bg-white border-l-[3px] border-black shadow-[-8px_0px_0px_0px_rgba(0,0,0,0.2)] z-[60] flex flex-col transition-transform duration-300 transform">
+    <div className="w-[300px] flex flex-col bg-[#313338] border-l border-[#2B2D31] h-full">
       {/* Header */}
-      <div className="bg-[#FDE047] p-4 border-b-[3px] border-black flex justify-between items-center">
-        <div className="flex items-center gap-2">
-            <MessageSquare className="w-6 h-6 text-black" />
-            <h2 className="text-xl font-black uppercase tracking-tight">Squad Chat</h2>
+      <div className="h-12 border-b border-[#26272D] flex items-center justify-between px-4 shadow-sm bg-[#313338]">
+        <div className="flex items-center gap-2 text-[#F2F3F5]">
+            <Hash className="w-5 h-5 text-[#80848E]" />
+            <span className="font-bold truncate">chat</span>
         </div>
-        <button onClick={onClose} className="p-1 hover:bg-black hover:text-[#FDE047] border-2 border-black rounded transition-colors">
-            <X className="w-6 h-6" />
+        <button onClick={onClose} className="text-[#B5BAC1] hover:text-[#DBDEE1]">
+            <X className="w-5 h-5" />
         </button>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#f3f4f6]">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-[#1A1B1E] scrollbar-track-[#2B2D31]">
         {messages.length === 0 && (
-            <div className="text-center text-gray-500 mt-10 font-medium italic">
-                No messages yet. Start yapping.
+            <div className="flex flex-col items-center justify-center h-full text-center opacity-50">
+                <MessageSquare className="w-12 h-12 mb-2 text-[#4E5058]" />
+                <p className="text-[#949BA4] text-sm">Welcome to the beginning of the #chat channel.</p>
             </div>
         )}
-        {messages.map((msg) => {
-          const isMe = msg.sender === userDisplayName;
+        {messages.map((msg, index) => {
+          const prevMsg = messages[index - 1];
+          const isSameSender = prevMsg && prevMsg.sender === msg.sender && (msg.timestamp - prevMsg.timestamp < 60000);
+          
           return (
-            <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-              <div className={`max-w-[85%] border-2 border-black p-3 shadow-[4px_4px_0px_0px_#000] rounded-lg relative ${isMe ? 'bg-[#C4B5FD] rounded-tr-none' : 'bg-white rounded-tl-none'}`}>
-                 {!isMe && <div className="text-xs font-bold mb-1 underline">{msg.sender}</div>}
-                 <p className="font-medium text-sm md:text-base leading-snug">{msg.text}</p>
+            <div key={msg.id} className={`group flex flex-col ${isSameSender ? 'mt-0.5' : 'mt-4'} hover:bg-[#2E3035] -mx-4 px-4 py-0.5`}>
+              {!isSameSender && (
+                  <div className="flex items-baseline gap-2 mb-1">
+                      <div className="w-8 h-8 rounded-full bg-[#5865F2] flex-shrink-0 mr-2 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity">
+                          <img src={`https://api.dicebear.com/7.x/initials/svg?seed=${msg.sender}&backgroundColor=5865F2`} alt="Avatar" className="w-full h-full object-cover" />
+                      </div>
+                      <span className="font-medium text-[#F2F3F5] hover:underline cursor-pointer">{msg.sender}</span>
+                      <span className="text-xs text-[#949BA4] font-medium ml-1">
+                          {new Date(msg.timestamp).toLocaleDateString()} at {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                  </div>
+              )}
+              
+              <div className={`pl-[42px] min-w-0 ${isSameSender ? '-mt-1' : ''}`}>
+                <p className="text-[#DBDEE1] whitespace-pre-wrap break-words leading-[1.375rem]">{msg.text}</p>
               </div>
-              <span className="text-[10px] font-bold text-gray-500 mt-1 uppercase">
-                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
             </div>
           );
         })}
@@ -109,21 +112,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId, userDisplayName,
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSendMessage} className="p-4 border-t-[3px] border-black bg-white flex gap-2">
-        <input
-          type="text"
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Type something..."
-          className="flex-1 border-[3px] border-black rounded-lg px-4 py-2 font-bold focus:outline-none focus:translate-x-[-2px] focus:translate-y-[-2px] focus:shadow-[4px_4px_0px_0px_#000] transition-all placeholder:font-normal"
-        />
-        <button 
-            type="submit" 
-            className="bg-black text-white p-3 rounded-lg border-[3px] border-black hover:bg-gray-800 active:scale-95 transition-transform"
-        >
-          <Send className="w-5 h-5" />
-        </button>
-      </form>
+      <div className="p-4 bg-[#313338]">
+        <form onSubmit={handleSendMessage} className="bg-[#383A40] rounded-lg px-4 py-2.5 flex items-center gap-2">
+            <button type="button" className="text-[#B5BAC1] hover:text-[#DBDEE1] p-1 rounded-full hover:bg-[#404249] transition-colors">
+                <div className="w-5 h-5 bg-[#B5BAC1] rounded-full flex items-center justify-center text-[#383A40] font-bold text-xs">+</div>
+            </button>
+            <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder={`Message #chat`}
+            className="flex-1 bg-transparent text-[#DBDEE1] placeholder-[#949BA4] outline-none font-medium"
+            />
+        </form>
+      </div>
     </div>
   );
 };
